@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Permissions requises - Kimland App</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="gradient-bg">
+        <div class="container mx-auto px-4 py-8">
+            <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-xl p-8">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 mx-auto mb-4 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                    </div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">Permissions manquantes</h1>
+                    <p class="text-gray-600">L'application nécessite des permissions supplémentaires pour fonctionner correctement</p>
+                </div>
+
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                    <div class="flex items-start">
+                        <svg class="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div>
+                            <h3 class="text-red-800 font-semibold">Erreur détectée</h3>
+                            <p class="text-red-700 text-sm mt-1">L'app ne peut pas mettre à jour l'inventaire car elle n'a pas les permissions <code class="bg-red-100 px-1 rounded">read_locations</code></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4 mb-8">
+                    <h2 class="text-xl font-semibold text-gray-800">Permissions requises :</h2>
+                    <ul class="space-y-2">
+                        <li class="flex items-center">
+                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span><code class="bg-gray-100 px-2 py-1 rounded text-sm">read_products</code> - Lecture des produits</span>
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span><code class="bg-gray-100 px-2 py-1 rounded text-sm">write_products</code> - Écriture des produits</span>
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span><code class="bg-gray-100 px-2 py-1 rounded text-sm">read_inventory</code> - Lecture de l'inventaire</span>
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span><code class="bg-gray-100 px-2 py-1 rounded text-sm">write_inventory</code> - Écriture de l'inventaire</span>
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-4 h-4 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span><code class="bg-red-100 px-2 py-1 rounded text-sm">read_locations</code> - <strong>Manquant</strong> - Lecture des emplacements</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="text-center space-y-4">
+                    <p class="text-gray-600">Pour résoudre ce problème, vous devez réinstaller l'application avec les bonnes permissions.</p>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                        <button onclick="reinstallApp()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200">
+                            Réinstaller avec permissions
+                        </button>
+                        <button onclick="window.history.back()" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition duration-200">
+                            Retour
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h3 class="font-semibold text-blue-800 mb-2">Que va faire la réinstallation ?</h3>
+                    <ul class="text-blue-700 text-sm space-y-1">
+                        <li>• Demander les permissions manquantes à Shopify</li>
+                        <li>• Conserver vos données existantes</li>
+                        <li>• Permettre la synchronisation complète de l'inventaire</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function getShopFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('shop') || localStorage.getItem('shop') || '';
+        }
+
+        function reinstallApp() {
+            const shop = getShopFromUrl();
+            if (!shop) {
+                alert('Shop manquant. Veuillez retourner à la page principale.');
+                return;
+            }
+            
+            // Rediriger vers l'installation
+            window.location.href = `/install?shop=${encodeURIComponent(shop)}`;
+        }
+
+        // Auto-populate shop if available
+        document.addEventListener('DOMContentLoaded', function() {
+            const shop = getShopFromUrl();
+            if (shop) {
+                // Update any shop references in the page
+                console.log('Shop détecté:', shop);
+            }
+        });
+    </script>
+</body>
+</html>

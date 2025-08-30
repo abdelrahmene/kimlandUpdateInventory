@@ -46,9 +46,9 @@ const config: Config = {
   shopify: {
     apiKey: process.env.SHOPIFY_API_KEY || '',
     apiSecret: process.env.SHOPIFY_API_SECRET || '',
-    scopes: process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_inventory',
+    scopes: process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_inventory,write_inventory,read_locations,write_themes,write_themes',
     redirectUri: process.env.SHOPIFY_REDIRECT_URI || 'http://localhost:3000/auth/callback',
-    apiVersion: process.env.SHOPIFY_API_VERSION || '2023-10'
+    apiVersion: process.env.SHOPIFY_API_VERSION || '2024-10'
   },
   firebase: {
     apiKey: process.env.FIREBASE_API_KEY || '',

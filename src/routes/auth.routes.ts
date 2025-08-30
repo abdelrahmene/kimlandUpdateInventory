@@ -52,6 +52,24 @@ router.get('/login', (req: Request, res: Response) => {
 });
 
 /**
+ * Route de test callback (sans validation) pour debug
+ */
+router.get('/callback-test', (req: Request, res: Response) => {
+  logger.info('🔍 TEST CALLBACK - Tous les paramètres reçus', {
+    query: req.query,
+    url: req.url,
+    headers: req.headers,
+    method: req.method
+  });
+  
+  res.json({
+    success: true,
+    message: 'Test callback réussi',
+    received: req.query
+  });
+});
+
+/**
  * Callback OAuth Shopify
  */
 router.get('/callback', validateOAuth, asyncHandler(async (req: Request, res: Response) => {

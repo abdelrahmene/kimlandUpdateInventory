@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kimland App - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .loading { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .sync-progress {
+            background: linear-gradient(90deg, #10B981 0%, #059669 100%);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 600px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-6">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">🔍 Kimland App</h1>
+                        <p class="text-sm text-gray-600">Synchronisation Shopify ↔ Kimland</p>
+                    </div>
+                    <div id="shop-status" class="flex items-center space-x-2">
+                        <div class="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                        <span class="text-sm text-gray-600">Connexion...</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div id="loading" class="text-center py-12">
+                <div class="loading text-4xl mb-4">⏳</div>
+                <p class="text-gray-600">Chargement de votre boutique...</p>
+            </div>
+
+            <div id="dashboard" style="display: none;">
+                <!-- Connection Status Banner -->
+                <div id="kimland-connection-banner" class="bg-white rounded-lg shadow mb-6 border-l-4 border-orange-400">
+                    <div class="px-6 py-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div id="kimland-connection-icon" class="w-4 h-4 bg-orange-400 rounded-full mr-3 animate-pulse"></div>
+                                <div>
+                                    <h3 class="text-lg font-medium text-gray-900">État Connexion Kimland</h3>
+                                    <p id="kimland-connection-status" class="text-sm text-gray-600">Vérification en cours...</p>
+                                </div>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button onclick="testKimlandConnection()" class="bg-blue-600 text-white px-3 py-1 text-sm rounded-md hover:bg-blue-700">
+                                    🔗 Test
+                                </button>
+                                <button onclick="forceReconnectKimland()" class="bg-orange-600 text-white px-3 py-1 text-sm rounded-md hover:bg-orange-700">
+                                    🔄 Reconnecter
+                                </button>
+                            </div>
+                        </div>
+                        <div id="kimland-connection-details" class="mt-2 text-xs text-gray-500" style="display: none;">
+                            <!-- Détails de connexion seront ajoutés ici -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="text-2xl font-bold text-gray-900" id="total-products">-</div>
+                        <div class="text-sm text-gray-600">Total Produits</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="text-2xl font-bold text-green-600" id="with-references">-</div>
+                        <div class="text-sm text-gray-600">Avec Références</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="text-2xl font-bold text-blue-600" id="sync-success">-</div>
+                        <div class="text-sm text-gray-600">Sync Réussie</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="text-2xl font-bold text-red-600" id="sync-errors">-</div>
+                        <div class="text-sm text-gray-600">Erreurs Sync</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="text-2xl font-bold text-purple-600" id="last-sync">-</div>
+                        <div class="text-sm text-gray-600">Dernière Sync</div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="text-2xl font-bold text-orange-600" id="kimland-status">-</div>
+                        <div class="text-sm text-gray-600">Kimland</div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="bg-white rounded-lg shadow mb-6">
+                    <div class="px-6 py-4 border-b">
+                        <div class="flex flex-col sm:flex-row gap-4">
+                            <input 
+                                type="text" 
+                                id="search-input" 
+                                placeholder="Rechercher un produit..."
+                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
+                            <div class="flex gap-2">
+                                <button onclick="refreshData()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                                    🔄 Actualiser
+                                </button>
+                                <button onclick="updateAllSKU()" class="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700">
+                                    🏷️ MAJ SKU
+                                </button>
+                                <button onclick="syncAllInventory()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">
+                                    📦 Sync Inventaire
+                                </button>
+                                <button onclick="exportData()" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">
+                                    📥 Exporter
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="bg-white rounded-lg shadow mb-6">
+                    <div class="border-b border-gray-200">
+                        <nav class="-mb-px flex">
+                            <button onclick="switchTab('products')" id="tab-products" class="py-2 px-4 border-b-2 border-green-500 text-green-600 font-medium text-sm">
+                                📦 Produits
+                            </button>
+                            <button onclick="switchTab('sync-history')" id="tab-sync-history" class="py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
+                                📊 Historique Sync
+                            </button>
+                            <button onclick="switchTab('settings')" id="tab-settings" class="py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
+                                ⚙️ Paramètres
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- Products Tab -->
+                <div id="tab-content-products" class="bg-white rounded-lg shadow">
+                    <div class="px-6 py-4 border-b">
+                        <h2 class="text-lg font-semibold text-gray-900">Produits avec Références</h2>
+                    </div>
+                    <div id="products-list" class="divide-y divide-gray-200">
+                        <!-- Products will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Sync History Tab -->
+                <div id="tab-content-sync-history" class="bg-white rounded-lg shadow" style="display: none;">
+                    <div class="px-6 py-4 border-b">
+                        <h2 class="text-lg font-semibold text-gray-900">Historique des Synchronisations</h2>
+                    </div>
+                    <div id="sync-history-list" class="divide-y divide-gray-200">
+                        <div class="p-6 text-center text-gray-500">Aucun historique de synchronisation</div>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="tab-content-settings" class="bg-white rounded-lg shadow" style="display: none;">
+                    <div class="px-6 py-4 border-b">
+                        <h2 class="text-lg font-semibold text-gray-900">Paramètres Kimland</h2>
+                    </div>
+                    <div class="p-6">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">URL Kimland</label>
+                                <input type="text" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" value="https://kimland.dz" readonly>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Statut Connexion</label>
+                                <div class="mt-1 flex items-center">
+                                    <div id="kimland-status-indicator" class="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
+                                    <span id="kimland-status-text" class="text-sm text-gray-900">Vérification...</span>
+                                </div>
+                            </div>
+                            <div class="flex gap-4">
+                                <button onclick="testKimlandConnection()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                                    🔗 Test Connexion
+                                </button>
+                                <button onclick="clearKimlandSession()" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
+                                    🗑️ Vider Session
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="error" style="display: none;" class="text-center py-12">
+                <div class="text-4xl mb-4">❌</div>
+                <p class="text-gray-600 mb-4">Erreur de connexion à votre boutique</p>
+                <button onclick="window.location.reload()" class="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700">
+                    Réessayer
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal pour le progrès de sync -->
+    <div id="sync-modal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">Synchronisation en cours</h3>
+                <button onclick="closeSyncModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div id="sync-progress-container">
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div id="sync-progress-bar" class="sync-progress h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="text-sm text-gray-600 mb-4" id="sync-status">Préparation...</div>
+                <div id="sync-results" class="max-h-60 overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentShop = null;
+        let syncResults = [];
+        let currentTab = 'products';
+
+        // Get shop from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        currentShop = urlParams.get('shop');
+
+        if (!currentShop) {
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('loading').style.display = 'none';
+        } else {
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            console.log('🚀 Chargement du dashboard', { currentShop });
+            
+            try {
+                updateStatus('connecting', 'Connexion à ' + currentShop);
+                updateKimlandStatus('checking', 'Vérification...');
+                
+                console.log('📡 Récupération des produits Shopify', { shop: currentShop });
+                const response = await fetch(`/api/products?shop=${encodeURIComponent(currentShop)}`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('❌ Erreur API produits:', errorData);
+                    
+                    if (errorData.error === 'AUTH_REQUIRED' && errorData.install_url) {
+                        console.log('🔄 Redirection vers installation Shopify');
+                        window.location.href = `/auth/install?shop=${encodeURIComponent(currentShop)}`;
+                        return;
+                    }
+                    
+                    throw new Error('Erreur de connexion: ' + (errorData.message || response.statusText));
+                }
+
+                const data = await response.json();
+                console.log('✅ Données produits reçues:', { success: data.success, productsCount: data.products?.length });
+                
+                if (data.success) {
+                    updateStatus('connected', currentShop);
+                    displayProducts(data.products || []);
+                    updateStats(data.products || []);
+                    
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+
+                    // Charger l'historique de sync
+                    console.log('📊 Chargement historique sync');
+                    loadSyncHistory();
+                    
+                    // Vérifier la connexion Kimland de façon détaillée
+                    console.log('🔍 Vérification connexion Kimland');
+                    checkKimlandStatusDetailed();
+                } else {
+                    throw new Error(data.message || 'Erreur inconnue');
+                }
+            } catch (error) {
+                console.error('❌ Erreur chargement dashboard:', error);
+                updateStatus('error', 'Erreur');
+                updateKimlandStatus('error', 'Erreur de chargement');
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+
+        function switchTab(tabName) {
+            // Masquer tous les contenus de tab
+            document.querySelectorAll('[id^="tab-content-"]').forEach(el => el.style.display = 'none');
+            
+            // Réinitialiser tous les boutons de tab
+            document.querySelectorAll('[id^="tab-"]').forEach(el => {
+                el.className = el.className.replace('border-green-500 text-green-600', 'border-transparent text-gray-500 hover:text-gray-700');
+            });
+            
+            // Activer le tab sélectionné
+            document.getElementById(`tab-content-${tabName}`).style.display = 'block';
+            document.getElementById(`tab-${tabName}`).className = document.getElementById(`tab-${tabName}`).className.replace('border-transparent text-gray-500 hover:text-gray-700', 'border-green-500 text-green-600');
+            
+            currentTab = tabName;
+        }
+
+        function updateStatus(status, shop) {
+            const statusEl = document.getElementById('shop-status');
+            const colors = {
+                connecting: 'bg-yellow-400',
+                connected: 'bg-green-400', 
+                error: 'bg-red-400'
+            };
+            
+            statusEl.innerHTML = `
+                <div class="w-3 h-3 ${colors[status]} rounded-full"></div>
+                <span class="text-sm text-gray-600">${shop}</span>
+            `;
+        }
+
+        function displayProducts(products) {
+            const container = document.getElementById('products-list');
+            
+            if (!products.length) {
+                container.innerHTML = '<div class="p-6 text-center text-gray-500">Aucun produit trouvé</div>';
+                return;
+            }
+
+            container.innerHTML = products.map(product => `
+                <div class="px-6 py-4 hover:bg-gray-50">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <h3 class="text-sm font-medium text-gray-900">${product.title}</h3>
+                            <p class="text-xs text-gray-400">ID: ${product.id}</p>
+                            <p class="text-sm text-gray-500">
+                                SKU: <strong class="${product.variants?.[0]?.sku ? 'text-green-600' : 'text-red-500'}">
+                                    ${product.variants?.[0]?.sku || 'Aucun'}
+                                </strong>
+                            </p>
+                            <p class="text-xs text-gray-400">Stock: ${product.variants?.reduce((total, v) => total + (v.inventory_quantity || 0), 0) || 0}</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="text-sm text-gray-500">
+                                ${product.variants?.length || 0} variant(s)
+                            </div>
+                            ${product.variants?.[0]?.sku ? `
+                                <button onclick="syncProductInventory(${product.id})" class="bg-green-500 text-white text-xs px-3 py-1 rounded hover:bg-green-600">
+                                    📦 Sync Stock
+                                </button>
+                            ` : `
+                                <button onclick="updateSKU(${product.id})" class="bg-blue-500 text-white text-xs px-3 py-1 rounded hover:bg-blue-600">
+                                    🏷️ MAJ SKU
+                                </button>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateStats(products) {
+            const withSku = products.filter(p => p.variants?.[0]?.sku);
+            const syncSuccess = syncResults.filter(r => r.syncStatus === 'success').length;
+            const syncErrors = syncResults.filter(r => r.syncStatus === 'error').length;
+            
+            document.getElementById('total-products').textContent = products.length;
+            document.getElementById('with-references').textContent = withSku.length;
+            document.getElementById('sync-success').textContent = syncSuccess;
+            document.getElementById('sync-errors').textContent = syncErrors;
+            document.getElementById('last-sync').textContent = syncResults.length > 0 ? 'Récente' : 'Jamais';
+        }
+
+        async function syncProductInventory(productId) {
+            try {
+                console.log('📦 Début sync produit:', { productId, shop: currentShop });
+                
+                const response = await fetch(`/api/sync/product/${productId}?shop=${encodeURIComponent(currentShop)}`, {
+                    method: 'POST'
+                });
+                
+                console.log('📡 Réponse sync produit:', { ok: response.ok, status: response.status });
+                
+                const result = await response.json();
+                console.log('📥 Données sync produit:', result);
+                
+                if (result.success) {
+                    console.log('✅ Sync produit réussie:', result);
+                    alert(`Stock synchronisé avec succès!\nSKU: ${result.syncResult?.sku}\nStock Kimland: ${result.kimlandStock}\nStock mis à jour sur Shopify: ${result.updatedQuantity}`);
+                    loadDashboard();
+                } else {
+                    console.error('❌ Sync produit échouée:', result);
+                    
+                    // Afficher détails de l'erreur si c'est une erreur d'auth Kimland
+                    let errorMsg = result.error || 'Erreur inconnue';
+                    if (result.syncResult?.errorMessage) {
+                        errorMsg += '\nDétail: ' + result.syncResult.errorMessage;
+                    }
+                    
+                    alert(`❌ Erreur de synchronisation: ${errorMsg}\n\nDébogage: ${JSON.stringify(result.syncResult, null, 2)}`);
+                    
+                    // Si c'est une erreur d'auth, vérifier le statut Kimland
+                    if (result.syncResult?.errorMessage?.includes('authentification')) {
+                        console.log('🔍 Erreur auth détectée, vérification statut Kimland');
+                        checkKimlandStatusDetailed();
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Erreur réseau sync produit:', error);
+                alert('❌ Erreur de connexion lors de la synchronisation: ' + error.message);
+            }
+        }
+
+        async function syncAllInventory() {
+            if (!confirm('Synchroniser l\'inventaire de tous les produits avec Kimland ?')) {
+                return;
+            }
+
+            showSyncModal();
+            
+            try {
+                const response = await fetch(`/api/sync/inventory/all?shop=${encodeURIComponent(currentShop)}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erreur de synchronisation');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                let buffer = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Garder la ligne incomplète
+
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const data = JSON.parse(line);
+                                updateSyncProgress(data);
+                            } catch (e) {
+                                console.log('Non-JSON line:', line);
+                            }
+                        }
+                    }
+                }
+
+                // Traiter la dernière ligne si elle existe
+                if (buffer.trim()) {
+                    try {
+                        const data = JSON.parse(buffer);
+                        updateSyncProgress(data);
+                    } catch (e) {
+                        console.log('Non-JSON final line:', buffer);
+                    }
+                }
+
+            } catch (error) {
+                console.error('Erreur sync globale:', error);
+                updateSyncStatus('Erreur de synchronisation: ' + error.message);
+            }
+        }
+
+        function showSyncModal() {
+            document.getElementById('sync-modal').style.display = 'block';
+            document.getElementById('sync-progress-bar').style.width = '0%';
+            document.getElementById('sync-status').textContent = 'Préparation...';
+            document.getElementById('sync-results').innerHTML = '';
+        }
+
+        function closeSyncModal() {
+            document.getElementById('sync-modal').style.display = 'none';
+            loadDashboard(); // Recharger les données
+        }
+
+        function updateSyncProgress(data) {
+            if (data.type === 'progress') {
+                const progress = Math.round((data.current / data.total) * 100);
+                document.getElementById('sync-progress-bar').style.width = progress + '%';
+                document.getElementById('sync-status').textContent = 
+                    `${data.message} (${data.current}/${data.total})`;
+            } else if (data.type === 'result') {
+                const resultDiv = document.getElementById('sync-results');
+                const statusClass = data.success ? 'text-green-600' : 'text-red-600';
+                const statusIcon = data.success ? '✅' : '❌';
+                
+                resultDiv.innerHTML += `
+                    <div class="text-sm py-1">
+                        <span class="${statusClass}">${statusIcon}</span>
+                        <strong>${data.sku}</strong>: ${data.message}
+                        ${data.kimlandStock !== undefined ? `(Stock: ${data.kimlandStock})` : ''}
+                    </div>
+                `;
+                resultDiv.scrollTop = resultDiv.scrollHeight;
+            } else if (data.type === 'complete') {
+                document.getElementById('sync-status').textContent = 
+                    `Terminé! ${data.successful} réussies, ${data.failed} échecs`;
+                
+                // Sauvegarder les résultats
+                syncResults = data.results || [];
+                updateStats([]);
+            }
+        }
+
+        async function loadSyncHistory() {
+            try {
+                const response = await fetch(`/api/sync/history?shop=${encodeURIComponent(currentShop)}`);
+                const data = await response.json();
+                
+                if (data.success && data.history.length > 0) {
+                    const container = document.getElementById('sync-history-list');
+                    container.innerHTML = data.history.map(sync => `
+                        <div class="px-6 py-4">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900">
+                                        ${new Date(sync.date).toLocaleString('fr-FR')}
+                                    </p>
+                                    <p class="text-xs text-gray-500">
+                                        ${sync.successful} réussies, ${sync.failed} échecs
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm ${sync.status === 'completed' ? 'text-green-600' : 'text-red-600'}">
+                                        ${sync.status === 'completed' ? '✅ Terminé' : '❌ Erreur'}
+                                    </div>
+                                    <div class="text-xs text-gray-400">
+                                        ${sync.duration}ms
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Erreur chargement historique:', error);
+            }
+        }
+
+        // Fonction de mise à jour du statut Kimland
+        function updateKimlandStatus(status, message, details = null) {
+            console.log('🔄 Mise à jour statut Kimland:', { status, message, details });
+            
+            const banner = document.getElementById('kimland-connection-banner');
+            const icon = document.getElementById('kimland-connection-icon');
+            const statusEl = document.getElementById('kimland-connection-status');
+            const detailsEl = document.getElementById('kimland-connection-details');
+            const statEl = document.getElementById('kimland-status');
+            
+            // Mise à jour des couleurs et icônes
+            const configs = {
+                connected: {
+                    bannerClass: 'border-green-400',
+                    iconClass: 'w-4 h-4 bg-green-400 rounded-full mr-3',
+                    stat: '🟢 OK'
+                },
+                error: {
+                    bannerClass: 'border-red-400',
+                    iconClass: 'w-4 h-4 bg-red-400 rounded-full mr-3',
+                    stat: '🔴 KO'
+                },
+                checking: {
+                    bannerClass: 'border-orange-400',
+                    iconClass: 'w-4 h-4 bg-orange-400 rounded-full mr-3 animate-pulse',
+                    stat: '🟡 ...'
+                },
+                disconnected: {
+                    bannerClass: 'border-red-400',
+                    iconClass: 'w-4 h-4 bg-red-400 rounded-full mr-3',
+                    stat: '⚫ OFF'
+                }
+            };
+            
+            const config = configs[status] || configs.error;
+            
+            // Mettre à jour l'apparence
+            banner.className = `bg-white rounded-lg shadow mb-6 border-l-4 ${config.bannerClass}`;
+            icon.className = config.iconClass;
+            statusEl.textContent = message;
+            statEl.textContent = config.stat;
+            
+            // Afficher les détails si disponibles
+            if (details) {
+                detailsEl.innerHTML = `
+                    <div class="bg-gray-50 p-2 rounded mt-2">
+                        <pre class="text-xs">${JSON.stringify(details, null, 2)}</pre>
+                    </div>
+                `;
+                detailsEl.style.display = 'block';
+            } else {
+                detailsEl.style.display = 'none';
+            }
+        }
+
+        async function checkKimlandStatusDetailed() {
+            try {
+                console.log('🔍 Début vérification statut Kimland détaillée');
+                updateKimlandStatus('checking', 'Vérification connexion Kimland...');
+                
+                const response = await fetch('/api/kimland/status');
+                console.log('📡 Réponse API kimland/status:', { 
+                    ok: response.ok, 
+                    status: response.status, 
+                    statusText: response.statusText 
+                });
+                
+                const data = await response.json();
+                console.log('📥 Données statut Kimland:', data);
+                
+                // Mise à jour des éléments de l'interface
+                const indicator = document.getElementById('kimland-status-indicator');
+                const text = document.getElementById('kimland-status-text');
+                
+                if (data.connected) {
+                    console.log('✅ Kimland connecté');
+                    updateKimlandStatus('connected', `Connecté depuis ${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'maintenant'}`, data);
+                    
+                    if (indicator) {
+                        indicator.className = 'w-3 h-3 bg-green-400 rounded-full mr-2';
+                    }
+                    if (text) {
+                        text.textContent = 'Connecté';
+                    }
+                } else {
+                    console.log('❌ Kimland déconnecté:', data.error);
+                    updateKimlandStatus('disconnected', `Déconnecté: ${data.error || 'Raison inconnue'}`, data);
+                    
+                    if (indicator) {
+                        indicator.className = 'w-3 h-3 bg-red-400 rounded-full mr-2';
+                    }
+                    if (text) {
+                        text.textContent = 'Déconnecté';
+                    }
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur vérification Kimland:', error);
+                updateKimlandStatus('error', `Erreur de vérification: ${error.message}`, { error: error.toString() });
+                
+                const indicator = document.getElementById('kimland-status-indicator');
+                const text = document.getElementById('kimland-status-text');
+                
+                if (indicator) {
+                    indicator.className = 'w-3 h-3 bg-red-400 rounded-full mr-2';
+                }
+                if (text) {
+                    text.textContent = 'Erreur de vérification';
+                }
+            }
+        }
+
+        async function testKimlandConnection() {
+            try {
+                console.log('🔗 Début test connexion Kimland');
+                updateKimlandStatus('checking', 'Test de connexion en cours...');
+                
+                const response = await fetch('/api/kimland/test', { method: 'POST' });
+                console.log('📡 Réponse test Kimland:', { ok: response.ok, status: response.status });
+                
+                const data = await response.json();
+                console.log('📥 Données test Kimland:', data);
+                
+                if (data.success) {
+                    console.log('✅ Test connexion Kimland réussi');
+                    updateKimlandStatus('connected', 'Test réussi - Connexion opérationnelle', data);
+                    alert('✅ Connexion Kimland réussie!\n' + JSON.stringify(data, null, 2));
+                    checkKimlandStatusDetailed();
+                } else {
+                    console.error('❌ Test connexion Kimland échoué:', data);
+                    updateKimlandStatus('error', `Test échoué: ${data.error}`, data);
+                    alert('❌ Erreur de connexion: ' + data.error + '\nDétails: ' + JSON.stringify(data, null, 2));
+                }
+            } catch (error) {
+                console.error('❌ Erreur test connexion Kimland:', error);
+                updateKimlandStatus('error', 'Erreur durant le test', { error: error.toString() });
+                alert('❌ Erreur de test de connexion: ' + error.message);
+            }
+        }
+        
+        async function forceReconnectKimland() {
+            if (!confirm('Forcer une reconnexion à Kimland ?\nCela va vider la session actuelle.')) {
+                return;
+            }
+            
+            try {
+                console.log('🔄 Début reconnexion forcée Kimland');
+                updateKimlandStatus('checking', 'Reconnexion forcée en cours...');
+                
+                // Vider la session actuelle
+                const clearResponse = await fetch('/api/kimland/clear-session', { method: 'POST' });
+                const clearData = await clearResponse.json();
+                console.log('🗑️ Session vidée:', clearData);
+                
+                // Forcer une nouvelle connexion
+                const loginResponse = await fetch('/api/kimland/force-login', { method: 'POST' });
+                const loginData = await loginResponse.json();
+                console.log('🔐 Reconnexion forcée:', loginData);
+                
+                if (loginData.success) {
+                    console.log('✅ Reconnexion Kimland réussie');
+                    updateKimlandStatus('connected', 'Reconnexion réussie', loginData);
+                    alert('✅ Reconnexion Kimland réussie!');
+                    checkKimlandStatusDetailed();
+                } else {
+                    console.error('❌ Reconnexion Kimland échouée:', loginData);
+                    updateKimlandStatus('error', `Reconnexion échouée: ${loginData.error}`, loginData);
+                    alert('❌ Erreur de reconnexion: ' + loginData.error);
+                }
+                
+            } catch (error) {
+                console.error('❌ Erreur reconnexion forcée Kimland:', error);
+                updateKimlandStatus('error', 'Erreur durant la reconnexion', { error: error.toString() });
+                alert('❌ Erreur de reconnexion: ' + error.message);
+            }
+        }
+
+        async function clearKimlandSession() {
+            if (!confirm('Vider la session Kimland ?')) return;
+            
+            try {
+                const response = await fetch('/api/kimland/clear-session', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Session vidée');
+                    checkKimlandStatus();
+                } else {
+                    alert('❌ Erreur: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ Erreur lors du vidage de session');
+            }
+        }
+
+        function refreshData() {
+            loadDashboard();
+        }
+
+        function exportData() {
+            // TODO: Implémenter l'export
+            alert('Fonctionnalité d\'export bientôt disponible!');
+        }
+
+        // Fonctions de mise à jour SKU
+        async function updateSKU(productId) {
+            try {
+                const response = await fetch(`/api/products/${productId}/update-sku?shop=${encodeURIComponent(currentShop)}`, {
+                    method: 'PUT'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`SKU mis à jour avec succès: ${result.reference}`);
+                    loadDashboard();
+                } else {
+                    alert(`Erreur: ${result.error}`);
+                }
+            } catch (error) {
+                alert('Erreur de connexion');
+            }
+        }
+
+        async function updateAllSKU() {
+            if (!confirm('Mettre à jour le SKU de TOUS les produits avec références ?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/products/update-all-sku?shop=${encodeURIComponent(currentShop)}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`Mise à jour terminée:\n- ${result.updated} SKU mis à jour\n- ${result.skipped} produits ignorés`);
+                    loadDashboard();
+                } else {
+                    alert(`Erreur: ${result.error}`);
+                }
+            } catch (error) {
+                alert('Erreur de connexion');
+            }
+        }
+
+        // Support touche Entrée pour la recherche
+        document.getElementById('search-input')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const searchTerm = e.target.value.trim();
+                if (searchTerm) {
+                    // TODO: Implémenter la recherche
+                    console.log('Recherche:', searchTerm);
+                }
+            }
+        });
+
+        // Fermer le modal en cliquant à l'extérieur
+        window.onclick = function(event) {
+            const modal = document.getElementById('sync-modal');
+            if (event.target === modal) {
+                closeSyncModal();
+            }
+        }
+    </script>
+</body>
+</html>

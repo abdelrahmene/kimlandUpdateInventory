@@ -4,6 +4,7 @@ import { ShopifyProduct, ProcessedProduct, ProcessedVariant } from '../types';
 import { logger } from '../utils/logger';
 import { UrlUtils } from '../utils/helpers';
 import { ReferenceExtractor } from '../utils/reference-extractor';
+import { shopifyLog } from '../utils/shopify-logger';
 
 export class ShopifyApiService {
   /**
@@ -11,14 +12,17 @@ export class ShopifyApiService {
    */
   public async updateVariantSku(shop: string, accessToken: string, variantId: string, sku: string): Promise<any> {
     const url = UrlUtils.buildApiUrl(shop, `variants/${variantId}.json`);
+    const payload = {
+      variant: {
+        id: variantId,
+        sku: sku
+      }
+    };
+    
+    shopifyLog.apiRequest('PUT', url, payload);
     
     try {
-      const response = await axios.put(url, {
-        variant: {
-          id: variantId,
-          sku: sku
-        }
-      }, {
+      const response = await axios.put(url, payload, {
         headers: {
           'X-Shopify-Access-Token': accessToken,
           'Content-Type': 'application/json',
@@ -26,9 +30,15 @@ export class ShopifyApiService {
         timeout: 10000,
       });
       
+      shopifyLog.apiResponse('PUT', url, response.status, true, response.data?.variant);
+      shopifyLog.skuUpdate(variantId, 'previous', sku, true);
+      
       logger.info('✅ SKU mis à jour', { shop, variantId, sku });
       return response.data?.variant || null;
     } catch (error: any) {
+      shopifyLog.apiError('PUT', url, error);
+      shopifyLog.skuUpdate(variantId, 'previous', sku, false);
+      
       logger.error('❌ Erreur updateVariantSku', { shop, variantId, sku, error });
       throw error;
     }
@@ -345,6 +355,266 @@ export class ShopifyApiService {
     } catch (error: any) {
       logger.error('Erreur getProduct', { shop, productId, error });
       return null;
+    }
+  }
+
+  /**
+   * Met à jour l'inventaire avec gestion des erreurs de permissions
+   */
+  public async updateInventoryLevelModern(shop: string, accessToken: string, variantId: string, quantity: number): Promise<any> {
+    try {
+      // Méthode 1: API moderne (nécessite read_locations)
+      return await this.tryModernInventoryUpdate(shop, accessToken, variantId, quantity);
+    } catch (error: any) {
+      if (error.response?.status === 403 && error.response?.data?.error?.includes('read_locations')) {
+        logger.warn('Permission read_locations manquante, tentative avec API legacy', { shop, variantId });
+        
+        // Méthode 2: Fallback avec API legacy
+        try {
+          return await this.updateVariantInventoryDirect(shop, accessToken, variantId, quantity);
+        } catch (legacyError: any) {
+          logger.warn('API legacy échouée, notification utilisateur nécessaire', { shop, variantId, legacyError: legacyError.message });
+          
+          // Retourner un objet pour indiquer le problème de permissions
+          return {
+            success: false,
+            error: 'permissions_required',
+            message: 'L\'app nécessite des permissions supplémentaires pour mettre à jour l\'inventaire. Veuillez réinstaller l\'app avec les bonnes permissions.',
+            requiredScope: 'read_locations'
+          };
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Méthode moderne avec locations API
+   */
+  private async tryModernInventoryUpdate(shop: string, accessToken: string, variantId: string, quantity: number): Promise<any> {
+    // 1. Récupérer l'inventory_item_id depuis le variant
+    const variantUrl = UrlUtils.buildApiUrl(shop, `variants/${variantId}.json`);
+    
+    shopifyLog.apiRequest('GET', variantUrl);
+    shopifyLog.debug('INVENTORY_UPDATE_START', { variantId, quantity });
+    
+    const variantResponse = await axios.get(variantUrl, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
+    
+    shopifyLog.apiResponse('GET', variantUrl, variantResponse.status, true, variantResponse.data?.variant);
+    
+    const variant = variantResponse.data.variant;
+    const inventoryItemId = variant.inventory_item_id;
+    
+    shopifyLog.debug('VARIANT_INFO', { variantId, inventoryItemId, currentStock: variant.inventory_quantity });
+    
+    if (!inventoryItemId) {
+      throw new Error('Inventory item ID manquant');
+    }
+    
+    // 2. Récupérer les locations (peut échouer avec 403)
+    const locationsUrl = UrlUtils.buildApiUrl(shop, 'locations.json');
+    
+    shopifyLog.apiRequest('GET', locationsUrl);
+    
+    const locationsResponse = await axios.get(locationsUrl, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
+    
+    shopifyLog.apiResponse('GET', locationsUrl, locationsResponse.status, true, {
+      locationsCount: locationsResponse.data.locations?.length
+    });
+    
+    const locations = locationsResponse.data.locations;
+    const primaryLocation = locations.find(loc => loc.primary) || locations[0];
+    
+    shopifyLog.debug('LOCATION_INFO', { 
+      totalLocations: locations.length,
+      primaryLocationId: primaryLocation?.id,
+      primaryLocationName: primaryLocation?.name
+    });
+    
+    if (!primaryLocation) {
+      throw new Error('Aucune location trouvée');
+    }
+    
+    // 3. Mettre à jour l'inventaire
+    const inventoryUrl = UrlUtils.buildApiUrl(shop, 'inventory_levels/set.json');
+    const inventoryPayload = {
+      inventory_item_id: inventoryItemId,
+      location_id: primaryLocation.id,
+      available: quantity
+    };
+    
+    shopifyLog.apiRequest('POST', inventoryUrl, inventoryPayload);
+    
+    logger.info('🔄 Mise à jour inventaire moderne', { 
+      shop, 
+      variantId, 
+      inventoryItemId, 
+      locationId: primaryLocation.id, 
+      quantity 
+    });
+    
+    const response = await axios.post(inventoryUrl, inventoryPayload, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
+    
+    shopifyLog.apiResponse('POST', inventoryUrl, response.status, true, response.data?.inventory_level);
+    shopifyLog.debug('INVENTORY_UPDATE_SUCCESS', { 
+      variantId, 
+      inventoryItemId,
+      locationId: primaryLocation.id,
+      newQuantity: quantity,
+      responseData: response.data?.inventory_level
+    });
+    
+    logger.info('✅ Inventaire mis à jour avec API moderne', { 
+      shop, 
+      variantId, 
+      quantity 
+    });
+    
+    return response.data?.inventory_level || null;
+  }
+
+  /**
+   * Méthode directe de mise à jour variant (API legacy)
+   */
+  private async updateVariantInventoryDirect(shop: string, accessToken: string, variantId: string, quantity: number): Promise<any> {
+    const url = UrlUtils.buildApiUrl(shop, `variants/${variantId}.json`);
+    const payload = {
+      variant: {
+        id: variantId,
+        inventory_quantity: quantity,
+        inventory_management: 'shopify',
+        inventory_policy: 'deny'
+      }
+    };
+    
+    shopifyLog.apiRequest('PUT', url, payload);
+    shopifyLog.debug('LEGACY_INVENTORY_UPDATE', { variantId, quantity });
+    
+    const response = await axios.put(url, payload, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
+    
+    shopifyLog.apiResponse('PUT', url, response.status, true, response.data?.variant);
+    logger.info('✅ Inventaire mis à jour avec API legacy', { shop, variantId, quantity });
+    
+    return { success: true, method: 'legacy', variant: response.data?.variant };
+  }
+  public async updateInventoryLevel(shop: string, accessToken: string, inventoryItemId: string, locationId: string, quantity: number): Promise<any> {
+    const url = UrlUtils.buildApiUrl(shop, 'inventory_levels/set.json');
+    
+    logger.info('🔄 Mise à jour inventaire (nouvelle API)', { shop, inventoryItemId, locationId, quantity });
+    
+    try {
+      const response = await axios.post(url, {
+        inventory_item_id: inventoryItemId,
+        location_id: locationId,
+        available: quantity
+      }, {
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+      
+      logger.info('✅ Inventaire mis à jour (nouvelle API)', { shop, inventoryItemId, quantity });
+      return response.data?.inventory_level || null;
+    } catch (error: any) {
+      logger.error('❌ Erreur updateInventoryLevel', { shop, inventoryItemId, quantity, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Récupère les locations de la boutique
+   */
+  public async getLocations(shop: string, accessToken: string): Promise<any[]> {
+    const url = UrlUtils.buildApiUrl(shop, 'locations.json');
+    
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+      
+      logger.info('🏢 Locations récupérées', { shop, count: response.data?.locations?.length || 0 });
+      return response.data?.locations || [];
+    } catch (error: any) {
+      logger.error('❌ Erreur getLocations', { shop, error: error.message });
+      return [];
+    }
+  }
+  public async updateVariantInventory(shop: string, accessToken: string, variantId: string, quantity: number): Promise<any> {
+    // Utiliser la nouvelle méthode avec gestion d'erreurs
+    return await this.updateInventoryLevelModern(shop, accessToken, variantId, quantity);
+  }
+
+  /**
+   * Crée un nouveau variant pour un produit
+   */
+  public async createVariant(shop: string, accessToken: string, productId: string, variantData: {
+    option1?: string;
+    option2?: string;
+    option3?: string;
+    inventory_quantity?: number;
+    inventory_management?: string;
+    inventory_policy?: string;
+  }): Promise<any> {
+    const url = UrlUtils.buildApiUrl(shop, `products/${productId}/variants.json`);
+    const payload = { variant: variantData };
+    
+    shopifyLog.apiRequest('POST', url, payload);
+    shopifyLog.debug('CREATE_VARIANT_START', { productId, variantData });
+    
+    try {
+      const response = await axios.post(url, payload, {
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+      
+      shopifyLog.apiResponse('POST', url, response.status, true, response.data?.variant);
+      shopifyLog.debug('CREATE_VARIANT_SUCCESS', { 
+        productId, 
+        newVariantId: response.data?.variant?.id,
+        option1: response.data?.variant?.option1 
+      });
+      
+      logger.info('✅ Variant créé', { shop, productId, variantId: response.data?.variant?.id });
+      return response.data?.variant || null;
+    } catch (error: any) {
+      shopifyLog.apiError('POST', url, error);
+      shopifyLog.debug('CREATE_VARIANT_FAILED', { productId, variantData, error: error.message });
+      
+      logger.error('❌ Erreur createVariant', { shop, productId, variantData, error: error.message });
+      throw error;
     }
   }
 

@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth, validateShop } from '../middleware/auth.middleware';
 import { shopifyApiService } from '../services/shopify-api.service';
+import { kimlandService } from '../services/kimland/kimland.service';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error.middleware';
 import { ShopifyProduct } from '../types/shopify.types';
 import { config } from '../config';
+import { firebaseService } from '../services/firebase.service';
 
 const router = Router();
 
@@ -14,6 +16,38 @@ const router = Router();
 router.get('/test', (req: Request, res: Response) => {
   res.json({ success: true, message: 'API fonctionne!', timestamp: new Date().toISOString() });
 });
+
+/**
+ * Récupérer l'access token d'une boutique
+ */
+router.get('/get-token', asyncHandler(async (req: Request, res: Response) => {
+  const shop = req.query.shop as string;
+  
+  if (!shop) {
+    return res.status(400).json({ error: 'Paramètre shop requis' });
+  }
+  
+  try {
+    const shopData = await firebaseService.getShopData(shop);
+    
+    if (!shopData) {
+      return res.status(404).json({ error: 'Boutique non trouvée' });
+    }
+    
+    res.json({
+      success: true,
+      shop: shop,
+      shopName: shopData.name,
+      accessToken: shopData.accessToken,
+      isActive: shopData.isActive,
+      installedAt: shopData.installedAt
+    });
+    
+  } catch (error) {
+    logger.error('Erreur récupération token', { error, shop });
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+}));
 
 /**
  * Met à jour le SKU d'un produit avec sa référence extraite
@@ -346,6 +380,93 @@ router.get('/products/:productId', requireAuth, asyncHandler(async (req: Request
   } catch (error) {
     logger.error('Erreur récupération produit', { error, shop, productId });
     res.status(500).json({ error: 'Erreur lors de la récupération du produit' });
+  }
+}));
+
+/**
+ * Synchroniser l'inventaire d'un produit avec Kimland
+ */
+router.post('/products/:productId/sync-inventory', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  const shop = req.query.shop as string;
+  const productId = req.params.productId;
+  
+  try {
+    const accessToken = req.accessToken!;
+    const product = await shopifyApiService.getProduct(shop, accessToken, productId);
+    
+    if (!product) {
+      return res.status(404).json({ error: 'Produit non trouvé' });
+    }
+    
+    // Récupérer le SKU (référence) du produit
+    const sku = product.variants[0]?.sku;
+    if (!sku) {
+      return res.status(400).json({ 
+        error: 'SKU manquant', 
+        message: 'Le produit doit avoir un SKU pour la synchronisation' 
+      });
+    }
+    
+    // Synchroniser avec Kimland
+    const syncResult = await kimlandService.syncProductInventory(sku, productId);
+    
+    res.json({
+      success: syncResult.syncStatus === 'success',
+      productId,
+      sku,
+      syncResult
+    });
+    
+  } catch (error) {
+    logger.error('Erreur sync inventaire', { error, shop, productId });
+    res.status(500).json({ error: 'Erreur lors de la synchronisation inventaire' });
+  }
+}));
+
+/**
+ * Synchroniser l'inventaire de tous les produits avec Kimland
+ */
+router.post('/products/sync-all-inventory', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  const shop = req.query.shop as string;
+  
+  try {
+    const accessToken = req.accessToken!;
+    const products = await shopifyApiService.getAllProducts(shop, accessToken);
+    
+    // Préparer la liste des produits avec SKU
+    const productsToSync = products
+      .filter(p => p.variants?.[0]?.sku)
+      .map(p => ({
+        sku: p.variants[0].sku!,
+        shopifyProductId: p.id.toString()
+      }));
+    
+    if (productsToSync.length === 0) {
+      return res.json({
+        success: false,
+        message: 'Aucun produit avec SKU trouvé'
+      });
+    }
+    
+    // Synchroniser avec Kimland
+    const syncResults = await kimlandService.syncMultipleProducts(productsToSync);
+    
+    const summary = {
+      total: syncResults.length,
+      success: syncResults.filter(r => r.syncStatus === 'success').length,
+      notFound: syncResults.filter(r => r.syncStatus === 'not_found').length,
+      errors: syncResults.filter(r => r.syncStatus === 'error').length
+    };
+    
+    res.json({
+      success: summary.success > 0,
+      summary,
+      results: syncResults
+    });
+    
+  } catch (error) {
+    logger.error('Erreur sync global inventaire', { error, shop });
+    res.status(500).json({ error: 'Erreur lors de la synchronisation globale' });
   }
 }));
 

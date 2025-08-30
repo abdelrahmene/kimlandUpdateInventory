@@ -56,8 +56,12 @@ export interface ShopifyProduct {
 export interface ShopifyVariant {
   id: number;
   title: string;
+  option1?: string;
+  option2?: string;
+  option3?: string;
   price: string;
   sku?: string;
+  barcode?: string;
   inventory_quantity?: number;
   inventory_management?: string;
   inventory_policy: string;

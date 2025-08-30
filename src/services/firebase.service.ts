@@ -45,6 +45,40 @@ export class FirebaseService {
   }
 
   /**
+   * Récupère les données d'une boutique
+   */
+  public async getShopData(shop: string): Promise<ShopData | null> {
+    // Essayer mémoire d'abord (plus rapide)
+    const memoryData = await memoryStorage.getShopData(shop);
+    if (memoryData) {
+      logger.debug('ShopData trouvé en mémoire', { shop });
+      return memoryData;
+    }
+    
+    // Fallback Firebase si disponible
+    if (!this.checkFirebaseAvailable()) return null;
+    
+    try {
+      const docRef = this.db!.collection(config.collections.shops).doc(shop);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+        logger.debug('Shop non trouvé dans Firebase', { shop });
+        return null;
+      }
+
+      const data = doc.data() as ShopData;
+      return data;
+    } catch (error) {
+      logger.error('Erreur lors de la récupération des données shop', { 
+        shop, 
+        error: error instanceof Error ? error.message : error 
+      });
+      return null;
+    }
+  }
+
+  /**
    * Vérifie si Firebase est disponible
    */
   private checkFirebaseAvailable(): boolean {
@@ -114,7 +148,7 @@ export class FirebaseService {
     // Essayer mémoire d'abord (plus rapide)
     const memoryToken = await memoryStorage.getShopToken(shop);
     if (memoryToken) {
-      logger.debug('Token trouvé en mémoire', { shop });
+      logger.debug('Token trouvé en mémoire', { shop, tokenLength: memoryToken.length });
       return memoryToken;
     }
     

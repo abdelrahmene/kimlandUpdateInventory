@@ -1,11 +1,13 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
-import session from 'express-session';
+const session = require('express-session');
 import path from 'path';
 import { config } from './config';
 import { authRoutes } from './routes/auth.routes';
 import { apiRoutes } from './routes/api.routes';
 import { debugRoutes } from './routes/debug.routes';
+import { syncRoutes } from './routes/sync.routes';
+import { kimlandRoutes } from './routes/kimland.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { logger } from './utils/logger';
 import { firebaseService } from './services/firebase.service';
@@ -14,9 +16,23 @@ const app: Application = express();
 
 // Configuration des middlewares
 app.use(cors({
-  origin: config.app.allowedOrigins,
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'https://*.ngrok.io'],
   credentials: true
 }));
+
+// Configuration CSP pour corriger ERR_BLOCKED_BY_CSP
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', 
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; " +
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
+    "connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:* https://*.myshopify.com https://kimland.dz; " +
+    "img-src 'self' data: https:; " +
+    "frame-src 'self' https://*.myshopify.com;"
+  );
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -39,7 +55,14 @@ app.use('/assets', express.static(path.join(__dirname, '../public/assets')));
 // Routes
 app.use('/auth', authRoutes);
 app.use('/api', apiRoutes);
+app.use('/api/sync', syncRoutes);
+app.use('/api/kimland', kimlandRoutes);
 app.use('/debug', debugRoutes);
+
+// Route aide permissions
+app.get('/permissions-help', (req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, '../public/permissions-help.html'));
+});
 
 // Route d'installation principale
 app.get('/install', (req: Request, res: Response) => {
@@ -141,7 +164,6 @@ const port = config.app.port;
 
 const startServer = async () => {
   try {
-    // Firebase s'initialise automatiquement lors de l'instanciation
     logger.info('🚀 Services initialisés');
 
     app.listen(port, '0.0.0.0', () => {
@@ -157,7 +179,7 @@ const startServer = async () => {
 
 // Gestion des erreurs non capturées
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('Unhandled Rejection at: ' + String(promise) + ' reason: ' + String(reason));
 });
 
 process.on('uncaughtException', (error) => {

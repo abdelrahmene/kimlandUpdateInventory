@@ -1220,11 +1220,11 @@ window.addEventListener('load', () => {
         async function loadSyncHistory() {
             try {
                 const response = await fetch(`/api/sync/history?shop=${encodeURIComponent(currentShop)}`);
-                const data = await response.json();
+                const historyData = await response.json();
                 
-                if (data.success && data.history.length > 0) {
+                if (historyData.success && historyData.history.length > 0) {
                     const container = document.getElementById('sync-history-list');
-                    container.innerHTML = data.history.map(sync => `
+                    container.innerHTML = historyData.history.map(sync => `
                         <div class="px-6 py-4">
                             <div class="flex justify-between items-center">
                                 <div>
@@ -1319,16 +1319,16 @@ window.addEventListener('load', () => {
                     statusText: response.statusText 
                 });
                 
-                const data = await response.json();
-                console.log('📥 Données statut Kimland:', data);
+                const statusData = await response.json();
+                console.log('📥 Données statut Kimland:', statusData);
                 
                 // Mise à jour des éléments de l'interface
                 const indicator = document.getElementById('kimland-status-indicator');
                 const text = document.getElementById('kimland-status-text');
                 
-                if (data.connected) {
+                if (statusData.connected) {
                     console.log('✅ Kimland connecté');
-                    updateKimlandStatus('connected', `Connecté depuis ${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'maintenant'}`, data);
+                    updateKimlandStatus('connected', `Connecté depuis ${statusData.timestamp ? new Date(statusData.timestamp).toLocaleTimeString() : 'maintenant'}`, statusData);
                     
                     if (indicator) {
                         indicator.className = 'w-3 h-3 bg-green-400 rounded-full mr-2';
@@ -1337,8 +1337,8 @@ window.addEventListener('load', () => {
                         text.textContent = 'Connecté';
                     }
                 } else {
-                    console.log('❌ Kimland déconnecté:', data.error);
-                    updateKimlandStatus('disconnected', `Déconnecté: ${data.error || 'Raison inconnue'}`, data);
+                    console.log('❌ Kimland déconnecté:', statusData.error);
+                    updateKimlandStatus('disconnected', `Déconnecté: ${statusData.error || 'Raison inconnue'}`, statusData);
                     
                     if (indicator) {
                         indicator.className = 'w-3 h-3 bg-red-400 rounded-full mr-2';
@@ -1372,18 +1372,18 @@ window.addEventListener('load', () => {
                 const response = await fetch('/api/kimland/test', { method: 'POST' });
                 console.log('📡 Réponse test Kimland:', { ok: response.ok, status: response.status });
                 
-                const data = await response.json();
-                console.log('📥 Données test Kimland:', data);
+                const testData = await response.json();
+                console.log('📥 Données test Kimland:', testData);
                 
-                if (data.success) {
+                if (testData.success) {
                     console.log('✅ Test connexion Kimland réussi');
-                    updateKimlandStatus('connected', 'Test réussi - Connexion opérationnelle', data);
-                    alert('✅ Connexion Kimland réussie!\n' + JSON.stringify(data, null, 2));
+                    updateKimlandStatus('connected', 'Test réussi - Connexion opérationnelle', testData);
+                    alert('✅ Connexion Kimland réussie!\n' + JSON.stringify(testData, null, 2));
                     checkKimlandStatusDetailed();
                 } else {
-                    console.error('❌ Test connexion Kimland échoué:', data);
-                    updateKimlandStatus('error', `Test échoué: ${data.error}`, data);
-                    alert('❌ Erreur de connexion: ' + data.error + '\nDétails: ' + JSON.stringify(data, null, 2));
+                    console.error('❌ Test connexion Kimland échoué:', testData);
+                    updateKimlandStatus('error', `Test échoué: ${testData.error}`, testData);
+                    alert('❌ Erreur de connexion: ' + testData.error + '\nDétails: ' + JSON.stringify(testData, null, 2));
                 }
             } catch (error) {
                 console.error('❌ Erreur test connexion Kimland:', error);
@@ -1434,13 +1434,13 @@ window.addEventListener('load', () => {
             
             try {
                 const response = await fetch('/api/kimland/clear-session', { method: 'POST' });
-                const data = await response.json();
+                const sessionData = await response.json();
                 
-                if (data.success) {
+                if (sessionData.success) {
                     alert('✅ Session vidée');
                     checkKimlandStatus();
                 } else {
-                    alert('❌ Erreur: ' + data.error);
+                    alert('❌ Erreur: ' + sessionData.error);
                 }
             } catch (error) {
                 alert('❌ Erreur lors du vidage de session');

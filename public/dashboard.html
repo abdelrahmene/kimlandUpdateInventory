@@ -223,7 +223,15 @@
         <div class="modal-content">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-semibold">Synchronisation en cours</h3>
-                <button onclick="closeSyncModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+                <div class="flex items-center space-x-2">
+                    <!-- 🚫 Bouton d'arrêt -->
+                    <button id="cancel-sync-btn" onclick="cancelSync()" 
+                            class="bg-red-600 text-white px-3 py-1 text-sm rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            style="display: none;">
+                        🚫 Arrêter
+                    </button>
+                    <button onclick="closeSyncModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
             </div>
             <div id="sync-progress-container">
                 <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
@@ -231,6 +239,14 @@
                 </div>
                 <div class="text-sm text-gray-600 mb-4" id="sync-status">Préparation...</div>
                 <div id="sync-results" class="max-h-60 overflow-y-auto"></div>
+                
+                <!-- Zone d'information sur l'arrêt -->
+                <div id="cancel-info" class="bg-yellow-50 border border-yellow-200 rounded p-3 mt-4" style="display: none;">
+                    <div class="flex items-center">
+                        <span class="text-yellow-600 mr-2">⚠️</span>
+                        <span class="text-sm text-yellow-800">Arrêt en cours... Finalisation des opérations actuelles.</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -487,107 +503,216 @@
             document.getElementById('sync-progress-bar').style.width = '0%';
             document.getElementById('sync-status').textContent = 'Préparation...';
             document.getElementById('sync-results').innerHTML = '';
+            
+            // Masquer les éléments d'arrêt initialement
+            document.getElementById('cancel-sync-btn').style.display = 'none';
+            document.getElementById('cancel-info').style.display = 'none';
+            isSyncCancelled = false;
         }
 
         function closeSyncModal() {
+            // Si une synchronisation est en cours, demander confirmation
+            if (syncAbortController && !isSyncCancelled) {
+                if (confirm('🚫 Voulez-vous vraiment arrêter la synchronisation en cours ?')) {
+                    cancelSync();
+                } else {
+                    return; // Ne pas fermer si l'utilisateur annule
+                }
+            }
+            
             document.getElementById('sync-modal').style.display = 'none';
             loadDashboard(); // Recharger les données
         }
 
 function updateSyncProgress(data) {
-    console.log('📊 Progrès sync reçu:', data);
+console.log('📊 Progrès sync reçu:', data);
+
+if (data.type === 'info') {
+updateSyncStatus(`ℹ️ ${data.message}`);
     
-    if (data.type === 'info') {
-        updateSyncStatus(`ℹ️ ${data.message}`);
-    } else if (data.type === 'progress') {
-        const progress = data.percentage || Math.round((data.current / data.total) * 100);
-        
-        // 📊 Mise à jour de la barre de progression
-        const progressBar = document.getElementById('sync-progress-bar');
-        if (progressBar) {
-            progressBar.style.width = progress + '%';
-            progressBar.style.transition = 'width 0.3s ease';
-        }
-        
-        // 📝 Mise à jour du status avec plus de détails
-        updateSyncStatus(`
-            🔄 ${data.message} 
-            <br><small>${data.current}/${data.total} (${progress}%)</small>
-            ${data.productName ? `<br><small>📦 ${data.productName}</small>` : ''}
-        `);
-        
-    } else if (data.type === 'result') {
-        const resultDiv = document.getElementById('sync-results');
-        if (!resultDiv) return;
-        
-        const timestamp = new Date(data.timestamp).toLocaleTimeString();
-        const statusClass = data.success ? 'text-green-600' : 'text-red-600';
-        const statusIcon = data.success ? '✅' : '❌';
-        
-        // 🎨 HTML amélioré pour les résultats
-        const resultHtml = `
-            <div class="sync-result-item border-l-4 ${data.success ? 'border-green-400' : 'border-red-400'} pl-3 py-2 mb-2 bg-gray-50 rounded">
-                <div class="flex justify-between items-start">
-                    <div class="flex-1">
-                        <div class="flex items-center">
-                            <span class="${statusClass} text-lg mr-2">${statusIcon}</span>
-                            <strong class="text-sm">${data.sku}</strong>
-                            <span class="text-xs text-gray-500 ml-2">${timestamp}</span>
-                        </div>
-                        ${data.productName ? `<div class="text-xs text-gray-600 ml-6">${data.productName}</div>` : ''}
-                        <div class="text-sm ml-6 ${statusClass}">${data.message}</div>
-                        ${data.kimlandStock !== undefined ? `
-                            <div class="text-xs text-blue-600 ml-6">
-                                📦 Stock: ${data.kimlandStock} 
-                                ${data.variantsCount ? `| ${data.variantsCount} variante(s)` : ''}
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        resultDiv.insertAdjacentHTML('beforeend', resultHtml);
-        resultDiv.scrollTop = resultDiv.scrollHeight;
-        
-    } else if (data.type === 'complete') {
-        // 🏁 Finalisation avec statistiques détaillées
-        const successRate = data.successRate || 0;
-        const duration = Math.round((data.duration || 0) / 1000);
-        
-        updateSyncStatus(`
-            🏁 <strong>Synchronisation terminée!</strong>
-            <br>✅ ${data.successful} réussies 
-            <br>❌ ${data.failed} échecs 
-            <br>📊 Taux de réussite: ${successRate}%
-            <br>⏱️ Durée: ${duration}s
-        `);
-        
-        // 🔔 Notification système si disponible
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Synchronisation terminée', {
-                body: `${data.successful}/${data.total} produits synchronisés avec succès`,
-                icon: '/favicon.ico'
-            });
-        }
-        
-        // 📊 Mettre à jour les statistiques du dashboard
-        setTimeout(() => {
-            loadDashboard();
-        }, 2000);
-        
-    } else if (data.type === 'error') {
-        updateSyncStatus(`💥 <strong>Erreur critique:</strong><br>${data.message}`);
-        console.error('Erreur sync critique:', data);
-    }
+// Afficher le bouton d'arrêt si la synchronisation peut être annulée
+if (data.canCancel) {
+    showCancelButton();
 }
 
-function updateSyncStatus(html) {
-    const statusEl = document.getElementById('sync-status');
-    if (statusEl) {
-        statusEl.innerHTML = html;
-    }
+} else if (data.type === 'progress') {
+const progress = data.percentage || Math.round((data.current / data.total) * 100);
+
+// 📊 Mise à jour de la barre de progression
+const progressBar = document.getElementById('sync-progress-bar');
+if (progressBar) {
+progressBar.style.width = progress + '%';
+progressBar.style.transition = 'width 0.3s ease';
 }
+
+// 📝 Mise à jour du status avec plus de détails
+    updateSyncStatus(`
+    🔄 ${data.message} 
+    <br><small>${data.current}/${data.total} (${progress}%)</small>
+    ${data.productName ? `<br><small>📦 ${data.productName}</small>` : ''}
+`);
+
+// Afficher le bouton d'arrêt si possible
+if (data.canCancel) {
+    showCancelButton();
+}
+
+} else if (data.type === 'result') {
+const resultDiv = document.getElementById('sync-results');
+if (!resultDiv) return;
+
+const timestamp = new Date(data.timestamp).toLocaleTimeString();
+const statusClass = data.success ? 'text-green-600' : 'text-red-600';
+const statusIcon = data.success ? '✅' : '❌';
+
+// 🎨 HTML amélioré pour les résultats
+const resultHtml = `
+<div class="sync-result-item border-l-4 ${data.success ? 'border-green-400' : 'border-red-400'} pl-3 py-2 mb-2 bg-gray-50 rounded">
+<div class="flex justify-between items-start">
+<div class="flex-1">
+<div class="flex items-center">
+    <span class="${statusClass} text-lg mr-2">${statusIcon}</span>
+        <strong class="text-sm">${data.sku}</strong>
+            <span class="text-xs text-gray-500 ml-2">${timestamp}</span>
+            </div>
+                ${data.productName ? `<div class="text-xs text-gray-600 ml-6">${data.productName}</div>` : ''}
+                <div class="text-sm ml-6 ${statusClass}">${data.message}</div>
+                ${data.kimlandStock !== undefined ? `
+                    <div class="text-xs text-blue-600 ml-6">
+                        📦 Stock: ${data.kimlandStock} 
+                            ${data.variantsCount ? `| ${data.variantsCount} variante(s)` : ''}
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    </div>
+`;
+
+resultDiv.insertAdjacentHTML('beforeend', resultHtml);
+resultDiv.scrollTop = resultDiv.scrollHeight;
+
+} else if (data.type === 'cancelled') {
+// 🚫 Synchronisation annulée
+updateSyncStatus(`
+    🚫 <strong>Synchronisation arrêtée!</strong>
+<br>Arrêtée à l'étape ${data.stoppedAt || 0}
+`);
+
+hideCancelButton();
+showCancelInfo('Synchronisation arrêtée par l\'utilisateur');
+
+// 🔔 Notification
+if ('Notification' in window && Notification.permission === 'granted') {
+new Notification('Synchronisation arrêtée', {
+        body: `Synchronisation interrompue à l'étape ${data.stoppedAt || 0}`,
+        icon: '/favicon.ico'
+        });
+}
+
+} else if (data.type === 'complete') {
+        // 🏁 Finalisation avec statistiques détaillées
+                const successRate = data.successRate || 0;
+                const duration = Math.round((data.duration || 0) / 1000);
+                
+                updateSyncStatus(`
+                    🏁 <strong>Synchronisation terminée!</strong>
+                    <br>✅ ${data.successful} réussies 
+                    <br>❌ ${data.failed} échecs 
+                    <br>📊 Taux de réussite: ${successRate}%
+                    <br>⏱️ Durée: ${duration}s
+                `);
+                
+                hideCancelButton();
+                
+                // 🔔 Notification système si disponible
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('Synchronisation terminée', {
+                        body: `${data.successful}/${data.total} produits synchronisés avec succès`,
+                        icon: '/favicon.ico'
+                    });
+                }
+                
+                // 📊 Mettre à jour les statistiques du dashboard
+                setTimeout(() => {
+                    loadDashboard();
+                }, 2000);
+                
+            } else if (data.type === 'error') {
+                updateSyncStatus(`💥 <strong>Erreur critique:</strong><br>${data.message}`);
+                hideCancelButton();
+                console.error('Erreur sync critique:', data);
+            }
+        }
+
+function updateSyncStatus(html) {
+const statusEl = document.getElementById('sync-status');
+if (statusEl) {
+statusEl.innerHTML = html;
+}
+}
+
+        // 🚫 Nouvelles fonctions pour gérer l'arrêt de synchronisation
+        function cancelSync() {
+            if (!syncAbortController || isSyncCancelled) {
+                console.log('⚠️ Aucune synchronisation à annuler');
+                return;
+            }
+            
+            console.log('🚫 Début annulation synchronisation');
+            isSyncCancelled = true;
+            
+            // Annuler la requête HTTP
+            if (syncAbortController) {
+                syncAbortController.abort();
+                syncAbortController = null;
+            }
+            
+            // Afficher le message d'arrêt
+            showCancelInfo('Arrêt en cours... Finalisation des opérations actuelles.');
+            
+            // Désactiver le bouton
+            const cancelBtn = document.getElementById('cancel-sync-btn');
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.innerHTML = '⏳ Arrêt...';
+            }
+            
+            updateSyncStatus('🚫 Arrêt de la synchronisation en cours...');
+        }
+        
+        function showCancelButton() {
+            const cancelBtn = document.getElementById('cancel-sync-btn');
+            if (cancelBtn && !isSyncCancelled) {
+                cancelBtn.style.display = 'inline-block';
+                cancelBtn.disabled = false;
+                cancelBtn.innerHTML = '🚫 Arrêter';
+            }
+        }
+        
+        function hideCancelButton() {
+            const cancelBtn = document.getElementById('cancel-sync-btn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+        }
+        
+        function showCancelInfo(message) {
+            const cancelInfo = document.getElementById('cancel-info');
+            if (cancelInfo) {
+                cancelInfo.style.display = 'block';
+                const messageSpan = cancelInfo.querySelector('.text-yellow-800');
+                if (messageSpan) {
+                    messageSpan.textContent = message;
+                }
+            }
+        }
+        
+        function hideCancelInfo() {
+            const cancelInfo = document.getElementById('cancel-info');
+            if (cancelInfo) {
+                cancelInfo.style.display = 'none';
+            }
+        }
 
 // 🔔 Demander permission pour notifications
 window.addEventListener('load', () => {

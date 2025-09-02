@@ -113,10 +113,12 @@ router.post('/product/:id', validateShop, requireAuth, asyncHandler(async (req: 
 }));
 
 /**
- * Synchronisation d'inventaire en streaming pour tous les produits
+ * Synchronisation d'inventaire en streaming pour tous les produits avec possibilité d'arrêt
  */
 router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
   const shop = req.query.shop as string;
+  let isCancelled = false;
+  let currentIndex = 0;
   
   try {
     const accessToken = req.accessToken!;
@@ -133,11 +135,47 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
     
     // 📡 Fonction helper pour envoyer des messages
     const sendMessage = (data: any) => {
+      if (isCancelled) return; // Ne plus envoyer si annulé
       const message = JSON.stringify(data) + '\n';
       res.write(message);
       // Forcer l'envoi immédiat avec cast pour éviter l'erreur TS
       (res as any).flush?.();
     };
+    
+    // 📴 Gérer l'arrêt de la synchronisation
+    const handleCancellation = () => {
+      isCancelled = true;
+      logger.info('🚫 Synchronisation annulée par l\'utilisateur', { shop, stoppedAt: currentIndex });
+      
+      sendMessage({
+        type: 'cancelled',
+        message: `🚫 Synchronisation arrêtée à l'étape ${currentIndex}`,
+        stoppedAt: currentIndex,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Fermer proprement la connexion
+      setTimeout(() => {
+        if (!res.destroyed) {
+          res.end();
+        }
+      }, 100);
+    };
+    
+    // 🎧 Écouter la fermeture de connexion (bouton arrêt côté client)
+    res.on('close', () => {
+      if (!isCancelled) {
+        logger.info('📁 Connexion fermée par le client', { shop, stoppedAt: currentIndex });
+        isCancelled = true;
+      }
+    });
+    
+    req.on('aborted', () => {
+      if (!isCancelled) {
+        logger.info('🚫 Requête annulée par le client', { shop, stoppedAt: currentIndex });
+        handleCancellation();
+      }
+    });
     
     // 📋 Récupérer tous les produits avec SKU
     sendMessage({
@@ -150,6 +188,8 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
 
     const products = await shopifyApiService.getAllProducts(shop, accessToken);
     const productsWithSku = products.filter(p => p.variants?.[0]?.sku);
+    
+    if (isCancelled) return;
     
     if (productsWithSku.length === 0) {
       sendMessage({
@@ -169,6 +209,7 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
       type: 'info',
       message: `${productsWithSku.length} produits trouvés avec SKU`,
       total: productsWithSku.length,
+      canCancel: true, // Indiquer que l'annulation est possible
       timestamp: new Date().toISOString()
     });
     
@@ -179,6 +220,13 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
     
     // 🔄 Synchroniser chaque produit avec feedback détaillé
     for (let i = 0; i < productsWithSku.length; i++) {
+      // ⚡ Vérifier l'annulation avant chaque produit
+      if (isCancelled) {
+        logger.info('🚫 Synchronisation interrompue', { shop, processedProducts: i, totalProducts: productsWithSku.length });
+        break;
+      }
+      
+      currentIndex = i;
       const product = productsWithSku[i];
       const sku = product.variants[0].sku!;
       const progress = Math.round(((i + 1) / productsWithSku.length) * 100);
@@ -193,11 +241,16 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
           percentage: progress,
           sku: sku,
           productName: product.title,
+          canCancel: true,
           timestamp: new Date().toISOString()
         });
         
         // 🔄 Synchroniser avec Kimland ET mettre à jour Shopify
         const syncResult = await kimlandService.syncProductInventory(sku, product.id.toString(), shop, accessToken);
+        
+        // Vérifier l'annulation après l'opération
+        if (isCancelled) break;
+        
         syncResults.push(syncResult);
         
         if (syncResult.syncStatus === 'success') {
@@ -239,12 +292,14 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
           });
         }
         
-        // ⏱️ Pause entre les produits pour éviter la surcharge
-        if (i < productsWithSku.length - 1) {
+        // ⏱️ Pause entre les produits pour éviter la surcharge ET permettre l'annulation
+        if (i < productsWithSku.length - 1 && !isCancelled) {
           await new Promise(resolve => setTimeout(resolve, 250));
         }
         
       } catch (error) {
+        if (isCancelled) break;
+        
         failed++;
         const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
         
@@ -262,42 +317,67 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
       }
     }
     
-    // 📊 Résultat final avec statistiques
-    const duration = Date.now() - startTime;
-    sendMessage({
-      type: 'complete',
-      message: `🏁 Synchronisation terminée en ${Math.round(duration / 1000)}s`,
-      successful,
-      failed,
-      total: productsWithSku.length,
-      duration,
-      successRate: Math.round((successful / productsWithSku.length) * 100),
-      results: syncResults,
-      timestamp: new Date().toISOString()
-    });
-    
-    // 💾 Sauvegarder l'historique
-    await saveSyncHistory(shop, {
-      date: new Date(),
-      successful,
-      failed,
-      total: productsWithSku.length,
-      status: failed === 0 ? 'completed' : 'partial',
-      duration,
-      results: syncResults
-    });
+    // 📊 Résultat final avec statistiques (si pas annulé)
+    if (!isCancelled) {
+      const duration = Date.now() - startTime;
+      sendMessage({
+        type: 'complete',
+        message: `🏁 Synchronisation terminée en ${Math.round(duration / 1000)}s`,
+        successful,
+        failed,
+        total: productsWithSku.length,
+        duration,
+        successRate: Math.round((successful / productsWithSku.length) * 100),
+        results: syncResults,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 💾 Sauvegarder l'historique
+      await saveSyncHistory(shop, {
+        date: new Date(),
+        successful,
+        failed,
+        total: productsWithSku.length,
+        status: failed === 0 ? 'completed' : 'partial',
+        duration,
+        results: syncResults
+      });
+    } else {
+      // Sauvegarder comme annulé
+      const duration = Date.now() - startTime;
+      await saveSyncHistory(shop, {
+        date: new Date(),
+        successful,
+        failed,
+        total: currentIndex,
+        status: 'cancelled',
+        duration,
+        results: syncResults
+      });
+      
+      logger.info('🚫 Synchronisation annulée sauvegardée', {
+        shop,
+        processedProducts: currentIndex,
+        successful,
+        failed,
+        duration: Math.round(duration / 1000)
+      });
+    }
     
     res.end();
     
   } catch (error) {
-    logger.error('Erreur sync streaming', { error, shop });
+    if (!isCancelled) {
+      logger.error('Erreur sync streaming', { error, shop });
+      
+      res.write(JSON.stringify({
+        type: 'error',
+        message: 'Erreur critique lors de la synchronisation',
+        error: error instanceof Error ? error.message : 'Erreur inconnue',
+        timestamp: new Date().toISOString()
+      }) + '\n');
+    }
     
-    res.write(JSON.stringify({
-      type: 'error',
-      message: 'Erreur critique lors de la synchronisation',
-      error: error instanceof Error ? error.message : 'Erreur inconnue',
-      timestamp: new Date().toISOString()
-    }) + '\n');
     res.end();
   }
 }));
@@ -389,7 +469,7 @@ interface SyncHistoryEntry {
   successful: number;
   failed: number;
   total: number;
-  status: 'completed' | 'partial' | 'failed';
+  status: 'completed' | 'partial' | 'failed' | 'cancelled'; // Ajout du statut 'cancelled'
   duration?: number;
   results: any[];
 }

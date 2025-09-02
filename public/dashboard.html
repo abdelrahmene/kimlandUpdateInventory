@@ -1189,33 +1189,6 @@ window.addEventListener('load', () => {
         Notification.requestPermission();
     }
 });
-            if (data.type === 'progress') {
-                const progress = Math.round((data.current / data.total) * 100);
-                document.getElementById('sync-progress-bar').style.width = progress + '%';
-                document.getElementById('sync-status').textContent = 
-                    `${data.message} (${data.current}/${data.total})`;
-            } else if (data.type === 'result') {
-                const resultDiv = document.getElementById('sync-results');
-                const statusClass = data.success ? 'text-green-600' : 'text-red-600';
-                const statusIcon = data.success ? '✅' : '❌';
-                
-                resultDiv.innerHTML += `
-                    <div class="text-sm py-1">
-                        <span class="${statusClass}">${statusIcon}</span>
-                        <strong>${data.sku}</strong>: ${data.message}
-                        ${data.kimlandStock !== undefined ? `(Stock: ${data.kimlandStock})` : ''}
-                    </div>
-                `;
-                resultDiv.scrollTop = resultDiv.scrollHeight;
-            } else if (data.type === 'complete') {
-                document.getElementById('sync-status').textContent = 
-                    `Terminé! ${data.successful} réussies, ${data.failed} échecs`;
-                
-                // Sauvegarder les résultats
-                syncResults = data.results || [];
-                updateStats([]);
-            }
-        
 
         async function loadSyncHistory() {
             try {

@@ -95,12 +95,17 @@ export class FirebaseService {
   public async saveShopToken(shopData: ShopData): Promise<void> {
     try {
       // 1. Sauvegarder avec le nouveau service sécurisé (priorité)
-      const { secureStoreService } = await import('../storage/secure-store.service');
-      await secureStoreService.saveShopAuth(
-        shopData.shop, 
-        shopData.accessToken, 
-        'read_products,write_products,read_inventory,write_inventory'
-      );
+      try {
+        const { secureStoreService } = await import('../storage/secure-store.service');
+        await secureStoreService.saveShopAuth(
+          shopData.shop, 
+          shopData.accessToken, 
+          'read_products,write_products,read_inventory,write_inventory'
+        );
+        logger.debug('Token sauvé dans le stockage sécurisé', { shop: shopData.shop });
+      } catch (secureError) {
+        logger.warn('⚠️ Stockage sécurisé non disponible, utilise mémoire', { shop: shopData.shop });
+      }
       
       // 2. Maintenir la compatibilité avec le stockage mémoire legacy
       await memoryStorage.saveShopData(shopData);
@@ -155,20 +160,29 @@ export class FirebaseService {
   public async getShopToken(shop: string): Promise<string | null> {
     try {
       // 1. Utiliser le service de stockage sécurisé local (priorité)
-      const { secureStoreService } = await import('../storage/secure-store.service');
-      const accessToken = await secureStoreService.getShopToken(shop);
-      
-      if (accessToken) {
-        logger.debug('✅ Token récupéré depuis stockage sécurisé', { shop, hasToken: !!accessToken });
-        return accessToken;
+      try {
+        const { secureStoreService } = await import('../storage/secure-store.service');
+        const accessToken = await secureStoreService.getShopToken(shop);
+        
+        if (accessToken) {
+          logger.debug('✅ Token récupéré depuis stockage sécurisé', { shop, hasToken: !!accessToken });
+          return accessToken;
+        }
+      } catch (secureError) {
+        logger.debug('⚠️ Stockage sécurisé non disponible pour récupération', { shop });
       }
       
       // 2. Fallback: vérifier l'ancien système mémoire
       const memoryToken = await memoryStorage.getShopToken(shop);
       if (memoryToken) {
         // Migrer vers le nouveau système
-        await secureStoreService.saveShopAuth(shop, memoryToken, 'read_products,write_products,read_inventory,write_inventory');
-        logger.info('🔄 Token migré depuis mémoire vers stockage sécurisé', { shop });
+        try {
+          const { secureStoreService } = await import('../storage/secure-store.service');
+          await secureStoreService.saveShopAuth(shop, memoryToken, 'read_products,write_products,read_inventory,write_inventory');
+          logger.info('🔄 Token migré depuis mémoire vers stockage sécurisé', { shop });
+        } catch (migrateError) {
+          logger.debug('⚠️ Migration vers stockage sécurisé échouée', { shop });
+        }
         return memoryToken;
       }
       
@@ -184,8 +198,13 @@ export class FirebaseService {
             
             if (firebaseToken) {
               // Migrer vers le nouveau système
-              await secureStoreService.saveShopAuth(shop, firebaseToken, 'read_products,write_products,read_inventory,write_inventory');
-              logger.info('🔄 Token migré depuis Firebase vers stockage sécurisé', { shop });
+              try {
+                const { secureStoreService } = await import('../storage/secure-store.service');
+                await secureStoreService.saveShopAuth(shop, firebaseToken, 'read_products,write_products,read_inventory,write_inventory');
+                logger.info('🔄 Token migré depuis Firebase vers stockage sécurisé', { shop });
+              } catch (migrateError) {
+                logger.debug('⚠️ Migration Firebase vers stockage sécurisé échouée', { shop });
+              }
               return firebaseToken;
             }
           }
@@ -205,8 +224,14 @@ export class FirebaseService {
    * Vérifie si un shop est connecté (utilise maintenant le stockage sécurisé)
    */
   public async isShopConnected(shop: string): Promise<boolean> {
-    const { secureStoreService } = await import('../storage/secure-store.service');
-    return await secureStoreService.isShopAuthenticated(shop);
+    try {
+      const { secureStoreService } = await import('../storage/secure-store.service');
+      return await secureStoreService.isShopAuthenticated(shop);
+    } catch (error) {
+      logger.debug('⚠️ Fallback sur mémoire pour vérification connexion', { shop });
+      const token = await memoryStorage.getShopToken(shop);
+      return !!token;
+    }
   }
   
   /**
@@ -215,8 +240,13 @@ export class FirebaseService {
   public async removeShopToken(shop: string): Promise<void> {
     try {
       // Supprimer du stockage sécurisé
-      const { secureStoreService } = await import('../storage/secure-store.service');
-      await secureStoreService.deleteShopAuth(shop);
+      try {
+        const { secureStoreService } = await import('../storage/secure-store.service');
+        await secureStoreService.deleteShopAuth(shop);
+        logger.debug('Token supprimé du stockage sécurisé', { shop });
+      } catch (secureError) {
+        logger.debug('Stockage sécurisé non disponible pour suppression', { shop });
+      }
       
       // Supprimer du cache mémoire legacy
       await memoryStorage.deleteShopData(shop);

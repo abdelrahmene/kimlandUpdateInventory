@@ -138,8 +138,10 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
       if (isCancelled) return; // Ne plus envoyer si annulé
       const message = JSON.stringify(data) + '\n';
       res.write(message);
-      // Forcer l'envoi immédiat avec cast pour éviter l'erreur TS
-      (res as any).flush?.();
+      // Forcer l'envoi immédiat
+      if ('flush' in res && typeof res.flush === 'function') {
+        res.flush();
+      }
     };
     
     // 📴 Gérer l'arrêt de la synchronisation

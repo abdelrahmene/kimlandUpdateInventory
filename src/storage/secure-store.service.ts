@@ -47,7 +47,7 @@ export class SecureStoreService {
    */
   private encrypt(text: string): EncryptedData {
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipher('aes-256-gcm', this.ENCRYPTION_KEY);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.ENCRYPTION_KEY, iv);
     
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
@@ -65,7 +65,7 @@ export class SecureStoreService {
    * Déchiffrer des données
    */
   private decrypt(encryptedData: EncryptedData): string {
-    const decipher = crypto.createDecipher('aes-256-gcm', this.ENCRYPTION_KEY);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.ENCRYPTION_KEY, Buffer.from(encryptedData.iv, 'hex'));
     decipher.setAuthTag(Buffer.from(encryptedData.tag, 'hex'));
     
     let decrypted = decipher.update(encryptedData.encryptedData, 'hex', 'utf8');

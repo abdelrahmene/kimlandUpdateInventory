@@ -137,7 +137,7 @@ router.get('/callback', validateOAuth, asyncHandler(async (req: Request, res: Re
       domain: shopInfo.domain,
       myshopifyDomain: normalizedShop,
       accessToken,
-      scope: config.shopify.scopes,
+      // scope: config.shopify.scopes, // Commenté car n'existe pas dans ShopData
       email: shopInfo.email || '',
       country: shopInfo.country_code || '',
       currency: shopInfo.currency || 'EUR',

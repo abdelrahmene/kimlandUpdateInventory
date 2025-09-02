@@ -135,7 +135,8 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
     const sendMessage = (data: any) => {
       const message = JSON.stringify(data) + '\n';
       res.write(message);
-      res.flush?.(); // Forcer l'envoi immédiat
+      // Forcer l'envoi immédiat avec cast pour éviter l'erreur TS
+      (res as any).flush?.();
     };
     
     // 📋 Récupérer tous les produits avec SKU

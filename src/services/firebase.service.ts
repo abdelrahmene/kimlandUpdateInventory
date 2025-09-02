@@ -90,30 +90,38 @@ export class FirebaseService {
   }
 
   /**
-   * Sauvegarde l'access token d'un shop
+   * Sauvegarde l'access token d'un shop (utilise maintenant le stockage sécurisé)
    */
   public async saveShopToken(shopData: ShopData): Promise<void> {
-    if (!this.checkFirebaseAvailable()) {
-      // Mode sans Firebase - simulation
-      logger.info('💾 Token sauvegardé (mode simulation)', { shop: shopData.shop });
-      return;
-    }
-    
     try {
-      const docRef = this.db!.collection(config.collections.shops).doc(shopData.shop);
-      await docRef.set({
-        ...shopData,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      // 1. Sauvegarder avec le nouveau service sécurisé (priorité)
+      const { secureStoreService } = await import('../storage/secure-store.service');
+      await secureStoreService.saveShopAuth(
+        shopData.shop, 
+        shopData.accessToken, 
+        'read_products,write_products,read_inventory,write_inventory'
+      );
+      
+      // 2. Maintenir la compatibilité avec le stockage mémoire legacy
+      await memoryStorage.saveShopData(shopData);
+      
+      // 3. Optionnel: sauvegarder aussi dans Firebase pour backup
+      if (this.checkFirebaseAvailable()) {
+        try {
+          const docRef = this.db!.collection(config.collections.shops).doc(shopData.shop);
+          await docRef.set({
+            ...shopData,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        } catch (fbError) {
+          logger.warn('⚠️ Backup Firebase échoué (pas critique)', { shop: shopData.shop, fbError });
+        }
+      }
 
-      logger.info('Token sauvegardé avec succès', { shop: shopData.shop });
+      logger.info('✅ Token sauvegardé avec stockage sécurisé', { shop: shopData.shop });
     } catch (error) {
-      logger.error('Erreur lors de la sauvegarde du token', { 
-        shop: shopData.shop, 
-        error: error instanceof Error ? error.message : error 
-      });
-      // Ne pas throw l'erreur - continuer en mode simulation
-      logger.warn('Continuation en mode simulation');
+      logger.error('❌ Erreur sauvegarde token', { shop: shopData.shop, error });
+      throw error;
     }
   }
 
@@ -142,35 +150,53 @@ export class FirebaseService {
   }
 
   /**
-   * Récupère l'access token d'un shop
+   * Récupère l'access token d'un shop (utilise maintenant le stockage sécurisé)
    */
   public async getShopToken(shop: string): Promise<string | null> {
-    // Essayer mémoire d'abord (plus rapide)
-    const memoryToken = await memoryStorage.getShopToken(shop);
-    if (memoryToken) {
-      logger.debug('Token trouvé en mémoire', { shop, tokenLength: memoryToken.length });
-      return memoryToken;
-    }
-    
-    // Fallback Firebase si disponible
-    if (!this.checkFirebaseAvailable()) return null;
-    
     try {
-      const docRef = this.db!.collection(config.collections.shops).doc(shop);
-      const doc = await docRef.get();
-
-      if (!doc.exists) {
-        logger.debug('Shop non trouvé dans Firebase', { shop });
-        return null;
+      // 1. Utiliser le service de stockage sécurisé local (priorité)
+      const { secureStoreService } = await import('../storage/secure-store.service');
+      const accessToken = await secureStoreService.getShopToken(shop);
+      
+      if (accessToken) {
+        logger.debug('✅ Token récupéré depuis stockage sécurisé', { shop, hasToken: !!accessToken });
+        return accessToken;
+      }
+      
+      // 2. Fallback: vérifier l'ancien système mémoire
+      const memoryToken = await memoryStorage.getShopToken(shop);
+      if (memoryToken) {
+        // Migrer vers le nouveau système
+        await secureStoreService.saveShopAuth(shop, memoryToken, 'read_products,write_products,read_inventory,write_inventory');
+        logger.info('🔄 Token migré depuis mémoire vers stockage sécurisé', { shop });
+        return memoryToken;
+      }
+      
+      // 3. Fallback Firebase
+      if (this.checkFirebaseAvailable()) {
+        try {
+          const docRef = this.db!.collection(config.collections.shops).doc(shop);
+          const doc = await docRef.get();
+          
+          if (doc.exists) {
+            const data = doc.data() as ShopData;
+            const firebaseToken = data.accessToken;
+            
+            if (firebaseToken) {
+              // Migrer vers le nouveau système
+              await secureStoreService.saveShopAuth(shop, firebaseToken, 'read_products,write_products,read_inventory,write_inventory');
+              logger.info('🔄 Token migré depuis Firebase vers stockage sécurisé', { shop });
+              return firebaseToken;
+            }
+          }
+        } catch (fbError) {
+          logger.debug('⚠️ Fallback Firebase échoué', { shop, fbError });
+        }
       }
 
-      const data = doc.data() as ShopData;
-      return data.accessToken || null;
+      return null;
     } catch (error) {
-      logger.error('Erreur lors de la récupération du token', { 
-        shop, 
-        error: error instanceof Error ? error.message : error 
-      });
+      logger.error('❌ Erreur récupération token', { shop, error });
       return null;
     }
   }
@@ -179,6 +205,7 @@ export class FirebaseService {
    * Vérifie si un shop est connecté (utilise maintenant le stockage sécurisé)
    */
   public async isShopConnected(shop: string): Promise<boolean> {
+    const { secureStoreService } = await import('../storage/secure-store.service');
     return await secureStoreService.isShopAuthenticated(shop);
   }
   
@@ -188,6 +215,7 @@ export class FirebaseService {
   public async removeShopToken(shop: string): Promise<void> {
     try {
       // Supprimer du stockage sécurisé
+      const { secureStoreService } = await import('../storage/secure-store.service');
       await secureStoreService.deleteShopAuth(shop);
       
       // Supprimer du cache mémoire legacy

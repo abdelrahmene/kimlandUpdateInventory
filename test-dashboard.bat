@@ -22,7 +22,7 @@ echo.
 echo ✅ Compilation réussie
 echo.
 echo 🌐 Démarrage du serveur en mode développement...
-echo 📍 Dashboard: http://localhost:3000
+echo 📍 Dashboard: http://localhost:5000
 echo 🛑 Ctrl+C pour arrêter
 echo.
 

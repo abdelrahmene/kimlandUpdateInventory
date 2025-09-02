@@ -19,7 +19,7 @@ const app: Application = express();
 
 // Configuration des middlewares
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'https://*.ngrok.io'],
+  origin: ['http://localhost:5000', 'http://localhost:3001', 'http://127.0.0.1:5000', 'https://*.ngrok.io'],
   credentials: true
 }));
 

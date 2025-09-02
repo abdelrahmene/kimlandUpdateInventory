@@ -97,8 +97,8 @@ pm2 logs kimland-app
 **Erreur 502 Bad Gateway:**
 ```bash
 pm2 status
-# Vérifier si l'app tourne sur le port 3000
-netstat -tlnp | grep :3000
+# Vérifier si l'app tourne sur le port 5000
+netstat -tlnp | grep :5000
 ```
 
 **Problème SSL:**

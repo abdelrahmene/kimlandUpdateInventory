@@ -550,36 +550,29 @@
             showSearchLoading();
             
             try {
-                // Si on n'a pas encore chargé tous les produits, les charger
-                if (allShopifyProducts.length === 0) {
-                    console.log('📦 Chargement de tous les produits Shopify...');
-                    const response = await fetch(`/api/products?shop=${encodeURIComponent(currentShop)}`);
-                    const responseData = await response.json();
-                    
-                    if (responseData.success && responseData.products) {
-                        allShopifyProducts = responseData.products;
-                        console.log(`✅ ${allShopifyProducts.length} produits chargés en cache`);
-                    } else {
-                        throw new Error(responseData.error || 'Erreur chargement produits');
-                    }
+                // 🔍 NOUVELLE APPROCHE : Recherche directe via API avec le terme
+                console.log(`🔍 Recherche directe pour: "${searchTerm}"`);
+                
+                const searchResponse = await fetch(
+                    `/api/products/search?shop=${encodeURIComponent(currentShop)}&q=${encodeURIComponent(searchTerm)}`,
+                    { method: 'GET' }
+                );
+                
+                if (!searchResponse.ok) {
+                    throw new Error(`Erreur de recherche: ${searchResponse.status}`);
                 }
                 
-                // Filtrer les produits selon le terme de recherche
-                const filteredProducts = allShopifyProducts.filter(product => {
-                    const searchLower = searchTerm.toLowerCase();
-                    
-                    // Recherche par nom de produit
-                    const matchesTitle = product.title.toLowerCase().includes(searchLower);
-                    
-                    // Recherche par SKU/référence
-                    const matchesSku = product.variants && product.variants.some(v => 
-                        v.sku && v.sku.toLowerCase().includes(searchLower)
-                    );
-                    
-                    return matchesTitle || matchesSku;
+                const searchData = await searchResponse.json();
+                console.log(`✅ Recherche API terminée:`, { 
+                    success: searchData.success, 
+                    resultCount: searchData.products?.length || 0 
                 });
                 
-                displaySearchResults(filteredProducts, searchTerm);
+                if (searchData.success && searchData.products) {
+                    displaySearchResults(searchData.products, searchTerm);
+                } else {
+                    throw new Error(searchData.error || 'Aucun résultat trouvé');
+                }
                 
             } catch (error) {
                 console.error('❌ Erreur recherche:', error);

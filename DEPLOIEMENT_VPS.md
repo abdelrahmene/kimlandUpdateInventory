@@ -7,7 +7,7 @@
 ```bash
 # Test local d'abord
 npm run dev
-# Vérifiez: http://localhost:3000/api/test
+# Vérifiez: http://localhost:5000/api/test
 ```
 
 ### 2. Upload vers Hostinger VPS
@@ -55,7 +55,7 @@ server {
     server_name votre-domaine.com;
     
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:5000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

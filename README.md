@@ -34,7 +34,7 @@ Firebase fonctionne en mode "graceful failure" :
 ## 📱 Test de l'application
 
 1. **Démarrer** : `npm run dev`
-2. **Ouvrir** : http://localhost:3000
+2. **Ouvrir** : http://localhost:5000
 3. **Tester** : Entrer le nom d'une boutique Shopify
 
 ## 🌐 Déploiement VPS Hostinger
@@ -77,7 +77,7 @@ npm run build
 ### Erreur "FIREBASE_PRIVATE_KEY"
 ✅ **Déjà corrigé** : L'app fonctionne sans Firebase en développement
 
-### Port 3000 occupé
+### Port 5000 occupé
 Modifier le PORT dans `.env` :
 ```env
 PORT=3001

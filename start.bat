@@ -18,7 +18,7 @@ call npm run compile
 
 echo ✅ 4/4 - Démarrage en mode développement...
 echo.
-echo 🌐 Application disponible sur http://localhost:3000
+echo 🌐 Application disponible sur http://localhost:5000
 echo 📝 Logs disponibles dans le terminal
 echo 🛑 Appuyez sur Ctrl+C pour arrêter
 echo.

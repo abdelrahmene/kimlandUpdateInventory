@@ -17,11 +17,11 @@ if errorlevel 1 (
 
 echo.
 echo 📊 Affichage des statistiques d'authentification...
-curl -s -H "x-admin-key: kimland_admin_2024_secure_key_change_this_in_production" http://localhost:3000/admin/auth-stats 2>nul || echo ⚠️ Serveur pas encore démarré
+curl -s -H "x-admin-key: kimland_admin_2024_secure_key_change_this_in_production" http://localhost:5000/admin/auth-stats 2>nul || echo ⚠️ Serveur pas encore démarré
 
 echo.
 echo 🧹 Nettoyage des authentifications expirées...
-curl -s -X POST -H "x-admin-key: kimland_admin_2024_secure_key_change_this_in_production" http://localhost:3000/admin/cleanup-auth 2>nul || echo ⚠️ Serveur pas encore démarré
+curl -s -X POST -H "x-admin-key: kimland_admin_2024_secure_key_change_this_in_production" http://localhost:5000/admin/cleanup-auth 2>nul || echo ⚠️ Serveur pas encore démarré
 
 echo.
 echo 🔄 Démarrage du serveur avec les nouvelles corrections...

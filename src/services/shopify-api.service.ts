@@ -212,7 +212,7 @@ export class ShopifyApiService {
           'Content-Type': 'application/json',
           'User-Agent': 'KimlandApp/1.0',
         },
-        timeout: 30000,
+        timeout: 50000,
       });
 
       const data = response.data;
@@ -365,32 +365,81 @@ export class ShopifyApiService {
   }
 
   /**
-   * Met à jour l'inventaire avec gestion des erreurs de permissions
+   * Met à jour l'inventaire avec gestion des erreurs de permissions - VERSION CORRIGÉE
    */
   public async updateInventoryLevelModern(shop: string, accessToken: string, variantId: string, quantity: number): Promise<any> {
+    shopifyLog.debug('INVENTORY_UPDATE_START_MODERN', { shop, variantId, quantity });
+    
     try {
-      // Méthode 1: API moderne (nécessite read_locations)
-      return await this.tryModernInventoryUpdate(shop, accessToken, variantId, quantity);
-    } catch (error: any) {
-      if (error.response?.status === 403 && error.response?.data?.error?.includes('read_locations')) {
-        logger.warn('Permission read_locations manquante, tentative avec API legacy', { shop, variantId });
+      // MÉTHODE 1 : API moderne avec locations (meilleure mais nécessite permissions)
+      const modernResult = await this.tryModernInventoryUpdate(shop, accessToken, variantId, quantity);
+      
+      shopifyLog.debug('MODERN_INVENTORY_SUCCESS', { variantId, quantity, method: 'modern' });
+      logger.info('✅ Inventaire mis à jour avec API moderne', { shop, variantId, quantity });
+      
+      return { success: true, method: 'modern', data: modernResult };
+      
+    } catch (modernError: any) {
+      shopifyLog.debug('MODERN_INVENTORY_FAILED', { 
+        variantId, 
+        error: modernError.message,
+        status: modernError.response?.status 
+      });
+      
+      if (modernError.response?.status === 403 || modernError.message?.includes('read_locations')) {
+        logger.warn('⚠️ Permission read_locations manquante, basculement vers API legacy', { shop, variantId });
         
-        // Méthode 2: Fallback avec API legacy
         try {
-          return await this.updateVariantInventoryDirect(shop, accessToken, variantId, quantity);
-        } catch (legacyError: any) {
-          logger.warn('API legacy échouée, notification utilisateur nécessaire', { shop, variantId, legacyError: legacyError.message });
+          // MÉTHODE 2 : API legacy directe (plus simple)
+          const legacyResult = await this.updateVariantInventoryDirect(shop, accessToken, variantId, quantity);
           
-          // Retourner un objet pour indiquer le problème de permissions
+          shopifyLog.debug('LEGACY_INVENTORY_SUCCESS', { variantId, quantity, method: 'legacy' });
+          logger.info('✅ Inventaire mis à jour avec API legacy', { shop, variantId, quantity });
+          
+          return { success: true, method: 'legacy', data: legacyResult };
+          
+        } catch (legacyError: any) {
+          shopifyLog.debug('LEGACY_INVENTORY_FAILED', { 
+            variantId, 
+            legacyError: legacyError.message,
+            status: legacyError.response?.status 
+          });
+          
+          logger.error('❌ Toutes les méthodes de mise à jour ont échoué', { 
+            shop, 
+            variantId, 
+            quantity,
+            modernError: modernError.message,
+            legacyError: legacyError.message
+          });
+          
+          // MÉTHODE 3 : Retourner une erreur informative
           return {
             success: false,
-            error: 'permissions_required',
-            message: 'L\'app nécessite des permissions supplémentaires pour mettre à jour l\'inventaire. Veuillez réinstaller l\'app avec les bonnes permissions.',
-            requiredScope: 'read_locations'
+            error: 'all_methods_failed',
+            message: `Impossible de mettre à jour l'inventaire. Moderne: ${modernError.message}, Legacy: ${legacyError.message}`,
+            modernError: modernError.message,
+            legacyError: legacyError.message,
+            variantId,
+            quantity
           };
         }
+      } else {
+        // Autre erreur que les permissions - la propager
+        logger.error('❌ Erreur inattendue lors de la mise à jour moderne', { 
+          shop, 
+          variantId, 
+          error: modernError.message 
+        });
+        
+        return {
+          success: false,
+          error: 'modern_api_error',
+          message: modernError.message,
+          variantId,
+          quantity
+        };
       }
-      throw error;
     }
   }
 

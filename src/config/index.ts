@@ -38,16 +38,16 @@ interface Config {
 
 const config: Config = {
   app: {
-    port: parseInt(process.env.PORT || '3000', 10),
+    port: parseInt(process.env.PORT || '5000', 10),
     env: process.env.NODE_ENV || 'development',
     sessionSecret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
-    allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']
+    allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5000']
   },
   shopify: {
     apiKey: process.env.SHOPIFY_API_KEY || '',
     apiSecret: process.env.SHOPIFY_API_SECRET || '',
     scopes: process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_inventory,write_inventory,read_locations,write_themes,write_themes',
-    redirectUri: process.env.SHOPIFY_REDIRECT_URI || 'http://localhost:3000/auth/callback',
+    redirectUri: process.env.SHOPIFY_REDIRECT_URI || 'http://localhost:5000/auth/callback',
     apiVersion: process.env.SHOPIFY_API_VERSION || '2024-10'
   },
   firebase: {
@@ -67,7 +67,7 @@ const config: Config = {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10)
   },
-  appUrl: process.env.APP_URL || 'http://localhost:3000'
+  appUrl: process.env.APP_URL || 'http://localhost:5000'
 };
 
 // Validation des variables critiques (seulement en production)

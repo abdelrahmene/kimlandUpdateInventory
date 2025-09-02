@@ -81,7 +81,7 @@ echo ========================================
 echo  ✅ TOUTES LES CORRECTIONS APPLIQUÉES !
 echo ========================================
 echo.
-echo 🌐 Application démarrera sur http://localhost:3000
+echo 🌐 Application démarrera sur http://localhost:5000
 echo 📝 Logs visibles dans le terminal
 echo 🛑 Appuyez sur Ctrl+C pour arrêter
 echo.

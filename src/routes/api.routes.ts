@@ -284,6 +284,96 @@ router.get('/dashboard', requireAuth, asyncHandler(async (req: Request, res: Res
 }));
 
 /**
+ * Recherche de produits par nom ou SKU
+ */
+router.get('/products/search', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  const shop = req.query.shop as string;
+  const searchTerm = req.query.q as string;
+  
+  if (!searchTerm) {
+    return res.status(400).json({
+      success: false,
+      error: 'Paramètre de recherche (q) requis'
+    });
+  }
+  
+  if (searchTerm.length < 2) {
+    return res.status(400).json({
+      success: false,
+      error: 'Le terme de recherche doit contenir au moins 2 caractères'
+    });
+  }
+  
+  try {
+    const accessToken = req.accessToken!;
+    
+    // 🔍 Rechercher via l'API Shopify avec tous les produits
+    const allProducts = await shopifyApiService.getAllProducts(shop, accessToken);
+    
+    const searchLower = searchTerm.toLowerCase();
+    
+    // Filtrer les produits par nom ET SKU simultanément
+    const filteredProducts = allProducts.filter(product => {
+      // Recherche par titre du produit
+      const matchesTitle = product.title.toLowerCase().includes(searchLower);
+      
+      // Recherche par SKU de n'importe quelle variante
+      const matchesSku = product.variants && product.variants.some(variant => 
+        variant.sku && variant.sku.toLowerCase().includes(searchLower)
+      );
+      
+      return matchesTitle || matchesSku;
+    });
+    
+    // Transformer au format standardisé
+    const processedProducts = filteredProducts.map(product => ({
+      id: product.id,
+      title: product.title,
+      handle: product.handle,
+      status: product.status,
+      vendor: product.vendor,
+      product_type: product.product_type,
+      created_at: product.created_at,
+      updated_at: product.updated_at,
+      variants: product.variants?.map(variant => ({
+        id: variant.id,
+        title: variant.title,
+        sku: variant.sku,
+        inventory_quantity: variant.inventory_quantity,
+        price: variant.price,
+        compare_at_price: variant.compare_at_price,
+        weight: variant.weight,
+        barcode: variant.barcode
+      })) || [],
+      reference: product.variants?.[0]?.sku || extractReferenceFromDescription(product.body_html || ''),
+      images: product.images?.map(img => ({
+        id: img.id,
+        src: img.src,
+        alt: img.alt
+      })) || []
+    }));
+    
+    logger.info(`🔍 Recherche terminée: ${processedProducts.length} produits trouvés pour "${searchTerm}"`);
+    
+    res.json({
+      success: true,
+      products: processedProducts,
+      searchTerm: searchTerm,
+      totalFound: processedProducts.length,
+      searchedIn: allProducts.length
+    });
+    
+  } catch (error) {
+    logger.error('❌ Erreur recherche produits', { error, shop, searchTerm });
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la recherche',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+}));
+
+/**
  * Récupérer tous les produits
  */
 router.get('/products', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {

@@ -72,10 +72,26 @@ export class KimlandService {
 
       if (shop && accessToken) {
         const updateResult = await this.updateShopifyInventory(shop, accessToken, shopifyProductId, kimlandProduct);
-        if (updateResult) {
+        
+        shopifyLog.debug('SHOPIFY_UPDATE_RESULT', {
+          sku,
+          productId: shopifyProductId,
+          updates: updateResult?.updates || 0,
+          creates: updateResult?.creates || 0,
+          errors: updateResult?.errors || 0,
+          success: updateResult ? updateResult.errors === 0 : false
+        });
+        
+        if (updateResult && updateResult.errors === 0) {
           shopifyLog.syncComplete(sku, updateResult.updates, updateResult.creates, updateResult.errors);
         } else {
-          shopifyLog.syncError(sku, 'Échec mise à jour Shopify');
+          shopifyLog.syncError(sku, `Échec mise à jour Shopify - ${updateResult?.errors || 'inconnue'} erreur(s)`);
+          // Ne pas faire échouer la sync entière si Kimland fonctionne
+          logger.warn('⚠️ Kimland OK mais échec mise à jour Shopify', {
+            sku,
+            kimlandStock: kimlandProduct.variants.reduce((total, v) => total + v.stock, 0),
+            shopifyErrors: updateResult?.errors || 'inconnues'
+          });
         }
       }
 
@@ -546,10 +562,23 @@ private async updateShopifyInventory(
 
     // 🎯 NOUVELLE LOGIQUE DE MAPPING AMÉLIORÉE
     const sizeMapping: Record<string, string> = {
-      '2XL':'XXL','XS':'XS','S':'S','M':'M','L':'L','XL':'XL','XXL':'XXL','3XL':'XXXL'
+      // Vêtements
+      '2XL':'XXL','XS':'XS','S':'S','M':'M','L':'L','XL':'XL','XXL':'XXL','3XL':'XXXL',
+      // Pointures exactes
+      '37':'37','37.5':'37.5','38':'38','38.5':'38.5','39':'39','39.5':'39.5',
+      '40':'40','40.5':'40.5','41':'41','41.5':'41.5','42':'42','42.5':'42.5',
+      '43':'43','43.5':'43.5','44':'44','44.5':'44.5','45':'45','45.5':'45.5','46':'46'
     };
     
-    const mapSize = (kimlandSize: string) => sizeMapping[kimlandSize] || kimlandSize;
+    const mapSize = (kimlandSize: string) => {
+      const mapped = sizeMapping[kimlandSize] || kimlandSize;
+      shopifyLog.debug('SIZE_MAPPING', {
+        kimlandOriginal: kimlandSize,
+        mappedSize: mapped,
+        isMapped: sizeMapping[kimlandSize] !== undefined
+      });
+      return mapped;
+    };
     const normalize = (str: string) => str.trim().toLowerCase();
 
     // 🔍 Analyser les options Shopify pour identifier le type de variante
@@ -619,24 +648,70 @@ private async updateShopifyInventory(
           shopifyVariant = shopifyProduct.variants.find(v => {
             const options = [v.option1, v.option2, v.option3].map(opt => (opt || '').toString());
             
-            // Tentative 1: Match exact
-            if (options.some(opt => opt === mappedSize)) return true;
+            shopifyLog.debug('VARIANT_MATCHING_ATTEMPT', {
+              shopifyVariantId: v.id,
+              shopifyOptions: options,
+              kimlandSize: mappedSize,
+              exactMatch: options.some(opt => opt === mappedSize),
+              partialMatch: options.some(opt => 
+                normalize(opt).includes(normalize(mappedSize)) || 
+                normalize(mappedSize).includes(normalize(opt))
+              )
+            });
             
-            // Tentative 2: Match partiel (pour les couleurs composées)
-            if (options.some(opt => 
-              normalize(opt).includes(normalize(mappedSize)) || 
-              normalize(mappedSize).includes(normalize(opt))
-            )) return true;
+            // Tentative 1: Match exact
+            if (options.some(opt => opt === mappedSize)) {
+              shopifyLog.debug('EXACT_MATCH_FOUND', {
+                shopifyVariantId: v.id,
+                matchedOption: options.find(opt => opt === mappedSize),
+                kimlandSize: mappedSize
+              });
+              return true;
+            }
+            
+            // Tentative 2: Match partiel (pour les couleurs composées) - CORRIGÉ
+            const partialMatchOption = options.find(opt => 
+              opt && opt.trim() && // Vérifier que l'option n'est pas vide
+              (normalize(opt).includes(normalize(mappedSize)) || 
+               normalize(mappedSize).includes(normalize(opt)))
+            );
+            
+            if (partialMatchOption) {
+              shopifyLog.debug('PARTIAL_MATCH_FOUND', {
+                shopifyVariantId: v.id,
+                partialMatchOption: partialMatchOption,
+                kimlandSize: mappedSize
+              });
+              return true;
+            }
             
             // Tentative 3: Match par mots-clés couleur
             const colorMatches = ['rouge', 'bleu', 'vert', 'noir', 'blanc', 'jaune', 'rose', 'violet', 'orange', 'gris', 'marron', 'beige'];
             const kimlandColor = colorMatches.find(color => normalize(mappedSize).includes(color));
             if (kimlandColor) {
-              return options.some(opt => normalize(opt).includes(kimlandColor));
+              const colorMatch = options.some(opt => normalize(opt).includes(kimlandColor));
+              if (colorMatch) {
+                shopifyLog.debug('COLOR_MATCH_FOUND', {
+                  shopifyVariantId: v.id,
+                  colorKeyword: kimlandColor,
+                  kimlandSize: mappedSize
+                });
+                return true;
+              }
             }
             
             return false;
           });
+          
+          if (!shopifyVariant) {
+            shopifyLog.debug('NO_VARIANT_MATCH', {
+              kimlandSize: mappedSize,
+              availableShopifyOptions: shopifyProduct.variants.map(v => ({
+                id: v.id,
+                options: [v.option1, v.option2, v.option3]
+              }))
+            });
+          }
         }
 
         if (shopifyVariant) {
@@ -651,22 +726,48 @@ private async updateShopifyInventory(
           });
           
           if (kimlandVariant.stock !== previousStock) {
-            await shopifyApiService.updateInventoryLevelModern(
+            const inventoryUpdateResult = await shopifyApiService.updateInventoryLevelModern(
               shop,
               accessToken,
               shopifyVariant.id.toString(),
               kimlandVariant.stock
             );
             
-            shopifyLog.inventorySuccess(shopifyVariant.id.toString(), kimlandVariant.stock);
-            updates++;
-            
-            shopifyLog.debug('STOCK_UPDATED', {
+            shopifyLog.debug('INVENTORY_UPDATE_RESULT', {
               variantId: shopifyVariant.id,
-              from: previousStock,
-              to: kimlandVariant.stock,
-              kimlandSize: mappedSize
+              targetStock: kimlandVariant.stock,
+              previousStock,
+              updateSuccess: inventoryUpdateResult?.success || false,
+              updateMethod: inventoryUpdateResult?.method || 'unknown',
+              updateError: inventoryUpdateResult?.error || null
             });
+            
+            if (inventoryUpdateResult?.success) {
+              shopifyLog.inventorySuccess(shopifyVariant.id.toString(), kimlandVariant.stock);
+              updates++;
+              
+              shopifyLog.debug('STOCK_UPDATED', {
+                variantId: shopifyVariant.id,
+                from: previousStock,
+                to: kimlandVariant.stock,
+                kimlandSize: mappedSize,
+                method: inventoryUpdateResult.method
+              });
+            } else {
+              errors++;
+              shopifyLog.inventoryError(
+                shopifyVariant.id.toString(), 
+                inventoryUpdateResult?.message || 'Erreur de mise à jour inconnue'
+              );
+              
+              shopifyLog.debug('STOCK_UPDATE_FAILED', {
+                variantId: shopifyVariant.id,
+                targetStock: kimlandVariant.stock,
+                previousStock,
+                error: inventoryUpdateResult?.message || 'Inconnue',
+                kimlandSize: mappedSize
+              });
+            }
           } else {
             shopifyLog.debug('STOCK_UNCHANGED', {
               variantId: shopifyVariant.id,

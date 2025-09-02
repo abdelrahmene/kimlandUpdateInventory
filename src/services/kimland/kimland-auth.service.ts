@@ -31,7 +31,7 @@ export class KimlandAuthService {
   constructor() {
     this.client = axios.create({
       baseURL: 'https://kimland.dz',
-      timeout: 30000,
+      timeout: 50000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:142.0) Gecko/20100101 Firefox/142.0',
         'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',

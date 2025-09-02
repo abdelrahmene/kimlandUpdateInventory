@@ -58,7 +58,7 @@ echo 🏃‍♂️ Pour démarrer l'application :
 echo   npm run dev    (mode développement)
 echo   npm start      (mode production)
 echo.
-echo 🌐 L'application sera accessible sur http://localhost:3000
+echo 🌐 L'application sera accessible sur http://localhost:5000
 echo.
 echo ⚠️  N'oubliez pas de configurer le fichier .env avant de démarrer !
 echo.

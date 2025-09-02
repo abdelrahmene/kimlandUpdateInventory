@@ -52,7 +52,7 @@ DELETE /admin/auth/:shop         # Supprimer une auth (admin)
 ```bash
 # Avec la clé admin dans le header
 curl -H "x-admin-key: kimland_admin_2024_secure_key_change_this_in_production" \
-     http://localhost:3000/admin/auth-stats
+     http://localhost:5000/admin/auth-stats
 ```
 
 ### 🎯 Logique de Synchronisation Améliorée
@@ -146,15 +146,15 @@ npx ts-node test/test-secure-storage.ts
 ```bash
 # Statistiques
 curl -H "x-admin-key: YOUR_ADMIN_KEY" \
-     http://localhost:3000/admin/auth-stats
+     http://localhost:5000/admin/auth-stats
 
 # Nettoyage
 curl -X POST -H "x-admin-key: YOUR_ADMIN_KEY" \
-     http://localhost:3000/admin/cleanup-auth
+     http://localhost:5000/admin/cleanup-auth
 
 # Statut d'un shop
 curl -H "x-admin-key: YOUR_ADMIN_KEY" \
-     http://localhost:3000/admin/auth-status/test-shop.myshopify.com
+     http://localhost:5000/admin/auth-status/test-shop.myshopify.com
 ```
 
 ## 🔍 Debugging

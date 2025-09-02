@@ -1,21 +1,29 @@
 module.exports = {
-  apps: [{
-    name: 'kimland-app',
-    script: './dist/server.js',
-    instances: 1,
-    exec_mode: 'cluster',
-    watch: false,
-    max_memory_restart: '1G',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3000
+  apps: [
+    {
+      name: 'birkshoes-api',
+      script: './dist/index.js',
+      cwd: '/var/www/birkshoes-api',
+      watch: false,
+      env: {
+        NODE_ENV: 'production',
+        PORT: 4000,
+        // ... config existante
+      }
     },
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_file: './logs/combined.log',
-    time: true,
-    autorestart: true,
-    max_restarts: 10,
-    min_uptime: '10s'
-  }]
+    {
+      name: 'kimland-app',
+      script: './dist/server.js',
+      cwd: '/var/www/kimland-app',
+      watch: false,
+      instances: 1,
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3001
+      },
+      error_file: '/var/log/pm2/kimland-app-error.log',
+      out_file: '/var/log/pm2/kimland-app-out.log',
+      log_file: '/var/log/pm2/kimland-app.log'
+    }
+  ]
 };

@@ -190,6 +190,7 @@ import rateLimit from 'express-rate-limit';
 import { config } from '../config';
 import { ValidationUtils } from '../utils/helpers';
 import { firebaseService } from '../services/firebase.service';
+import { secureStoreService } from '../storage/secure-store.service';
 import { logger } from '../utils/logger';
 
 /**
@@ -238,7 +239,7 @@ export const validateShop = (req: Request, res: Response, next: NextFunction): v
 };
 
 /**
- * Middleware d'authentification Shopify
+ * Middleware d'authentification Shopify (utilise maintenant le stockage sécurisé)
  */
 export const requireAuth = async (
   req: Request,
@@ -256,14 +257,21 @@ export const requireAuth = async (
       return;
     }
 
-    // Vérifier si le shop est connecté (Firebase + mémoire fallback)
+    // 🔐 Vérifier l'authentification avec le stockage sécurisé
     let accessToken: string | null = null;
 
     try {
-      accessToken = await firebaseService.getShopToken(shop);
+      // Utiliser directement le service sécurisé (plus rapide, plus fiable)
+      accessToken = await secureStoreService.getShopToken(shop);
 
       // 🔹 Afficher dans la console le token récupéré
-      console.log(`AccessToken pour ${shop}:`, accessToken);
+      if (accessToken) {
+        console.log(`✅ AccessToken pour ${shop}: ${accessToken.substring(0, 20)}...`);
+        logger.debug('✅ Token trouvé avec stockage sécurisé', { shop, tokenLength: accessToken.length });
+      } else {
+        console.log(`❌ Aucun AccessToken pour ${shop}`);
+        logger.debug('❌ Aucun token trouvé avec stockage sécurisé', { shop });
+      }
 
     } catch (error) {
       logger.error('Erreur lors de la récupération du token', {
@@ -283,13 +291,15 @@ export const requireAuth = async (
       return;
     }
 
-    // Ajouter les données du shop à la requête
+    // ✅ Ajouter les données du shop à la requête
     req.accessToken = accessToken;
     req.shopData = {
       shop,
       accessToken,
       isConnected: true
     };
+    
+    logger.debug('✅ Authentification réussie', { shop, tokenLength: accessToken.length });
     next();
   } catch (error) {
     logger.error('Erreur dans requireAuth middleware', {

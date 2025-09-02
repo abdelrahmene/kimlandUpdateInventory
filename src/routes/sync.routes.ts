@@ -121,56 +121,81 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
   try {
     const accessToken = req.accessToken!;
     
-    // Configuration du streaming
+    // 🎬 Configuration du streaming avec headers corrects
     res.writeHead(200, {
-      'Content-Type': 'application/json',
+      'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'X-Accel-Buffering': 'no', // Nginx
+      'Transfer-Encoding': 'chunked'
     });
     
-    // Récupérer tous les produits avec SKU
+    // 📡 Fonction helper pour envoyer des messages
+    const sendMessage = (data: any) => {
+      const message = JSON.stringify(data) + '\n';
+      res.write(message);
+      res.flush?.(); // Forcer l'envoi immédiat
+    };
+    
+    // 📋 Récupérer tous les produits avec SKU
+    sendMessage({
+      type: 'progress',
+      message: 'Chargement des produits...',
+      current: 0,
+      total: 0,
+      timestamp: new Date().toISOString()
+    });
+
     const products = await shopifyApiService.getAllProducts(shop, accessToken);
     const productsWithSku = products.filter(p => p.variants?.[0]?.sku);
     
     if (productsWithSku.length === 0) {
-      res.write(JSON.stringify({
+      sendMessage({
         type: 'complete',
         message: 'Aucun produit avec SKU trouvé',
         successful: 0,
         failed: 0,
+        total: 0,
         results: []
-      }) + '\n');
+      });
       res.end();
       return;
     }
     
-    // Envoyer le progrès initial
-    res.write(JSON.stringify({
-      type: 'progress',
-      message: 'Initialisation...',
-      current: 0,
-      total: productsWithSku.length
-    }) + '\n');
+    // 📊 Informations initiales
+    sendMessage({
+      type: 'info',
+      message: `${productsWithSku.length} produits trouvés avec SKU`,
+      total: productsWithSku.length,
+      timestamp: new Date().toISOString()
+    });
     
     const syncResults = [];
     let successful = 0;
     let failed = 0;
+    const startTime = Date.now();
     
-    // Synchroniser chaque produit
+    // 🔄 Synchroniser chaque produit avec feedback détaillé
     for (let i = 0; i < productsWithSku.length; i++) {
       const product = productsWithSku[i];
       const sku = product.variants[0].sku!;
+      const progress = Math.round(((i + 1) / productsWithSku.length) * 100);
       
       try {
-        // Envoyer le progrès
-        res.write(JSON.stringify({
+        // 📈 Envoyer le progrès avant traitement
+        sendMessage({
           type: 'progress',
           message: `Synchronisation ${sku}...`,
           current: i + 1,
-          total: productsWithSku.length
-        }) + '\n');
+          total: productsWithSku.length,
+          percentage: progress,
+          sku: sku,
+          productName: product.title,
+          timestamp: new Date().toISOString()
+        });
         
-        // Synchroniser avec Kimland ET mettre à jour Shopify
+        // 🔄 Synchroniser avec Kimland ET mettre à jour Shopify
         const syncResult = await kimlandService.syncProductInventory(sku, product.id.toString(), shop, accessToken);
         syncResults.push(syncResult);
         
@@ -178,57 +203,86 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
           successful++;
           const kimlandStock = syncResult.kimlandProduct ? 
             syncResult.kimlandProduct.variants.reduce((total, v) => total + v.stock, 0) : 0;
-          res.write(JSON.stringify({
+          
+          sendMessage({
             type: 'result',
             success: true,
             sku: sku,
-            message: `Stock trouvé sur Kimland: ${kimlandStock}`,
-            kimlandStock: kimlandStock
-          }) + '\n');
-        } else {
+            productName: product.title,
+            message: `✅ Stock synchronisé: ${kimlandStock} unités`,
+            kimlandStock: kimlandStock,
+            variantsCount: syncResult.kimlandProduct?.variants.length || 0,
+            timestamp: new Date().toISOString()
+          });
+        } else if (syncResult.syncStatus === 'not_found') {
           failed++;
-          res.write(JSON.stringify({
+          sendMessage({
             type: 'result',
             success: false,
             sku: sku,
-            message: syncResult.errorMessage || 'Erreur de synchronisation'
-          }) + '\n');
+            productName: product.title,
+            message: `⚠️ Produit non trouvé sur Kimland`,
+            error: 'not_found',
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          failed++;
+          sendMessage({
+            type: 'result',
+            success: false,
+            sku: sku,
+            productName: product.title,
+            message: `❌ ${syncResult.errorMessage || 'Erreur inconnue'}`,
+            error: syncResult.errorMessage,
+            timestamp: new Date().toISOString()
+          });
         }
         
-        // Pause pour éviter la surcharge
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // ⏱️ Pause entre les produits pour éviter la surcharge
+        if (i < productsWithSku.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
         
       } catch (error) {
         failed++;
         const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
         
-        res.write(JSON.stringify({
+        sendMessage({
           type: 'result',
           success: false,
           sku: sku,
-          message: errorMessage
-        }) + '\n');
+          productName: product.title,
+          message: `💥 Erreur système: ${errorMessage}`,
+          error: errorMessage,
+          timestamp: new Date().toISOString()
+        });
         
         logger.error('Erreur sync produit individuel', { sku, error, shop });
       }
     }
     
-    // Envoyer le résultat final
-    res.write(JSON.stringify({
+    // 📊 Résultat final avec statistiques
+    const duration = Date.now() - startTime;
+    sendMessage({
       type: 'complete',
-      message: `Synchronisation terminée: ${successful} réussies, ${failed} échecs`,
+      message: `🏁 Synchronisation terminée en ${Math.round(duration / 1000)}s`,
       successful,
       failed,
-      results: syncResults
-    }) + '\n');
+      total: productsWithSku.length,
+      duration,
+      successRate: Math.round((successful / productsWithSku.length) * 100),
+      results: syncResults,
+      timestamp: new Date().toISOString()
+    });
     
-    // Sauvegarder l'historique
+    // 💾 Sauvegarder l'historique
     await saveSyncHistory(shop, {
       date: new Date(),
       successful,
       failed,
       total: productsWithSku.length,
       status: failed === 0 ? 'completed' : 'partial',
+      duration,
       results: syncResults
     });
     
@@ -239,7 +293,9 @@ router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req
     
     res.write(JSON.stringify({
       type: 'error',
-      message: 'Erreur lors de la synchronisation'
+      message: 'Erreur critique lors de la synchronisation',
+      error: error instanceof Error ? error.message : 'Erreur inconnue',
+      timestamp: new Date().toISOString()
     }) + '\n');
     res.end();
   }

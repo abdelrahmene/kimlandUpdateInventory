@@ -176,11 +176,36 @@ export class FirebaseService {
   }
 
   /**
-   * Vérifie si un shop est connecté
+   * Vérifie si un shop est connecté (utilise maintenant le stockage sécurisé)
    */
   public async isShopConnected(shop: string): Promise<boolean> {
-    const token = await this.getShopToken(shop);
-    return token !== null;
+    return await secureStoreService.isShopAuthenticated(shop);
+  }
+  
+  /**
+   * Supprime l'authentification d'un shop (utilise maintenant le stockage sécurisé)
+   */
+  public async removeShopToken(shop: string): Promise<void> {
+    try {
+      // Supprimer du stockage sécurisé
+      await secureStoreService.deleteShopAuth(shop);
+      
+      // Supprimer du cache mémoire legacy
+      await memoryStorage.deleteShopData(shop);
+      
+      // Supprimer de Firebase aussi
+      if (this.checkFirebaseAvailable()) {
+        try {
+          await this.deleteShopData(shop);
+        } catch (fbError) {
+          logger.debug('🔄 Suppression Firebase échouée (pas critique)', { shop });
+        }
+      }
+
+      logger.info('🗑️ Token supprimé avec stockage sécurisé', { shop });
+    } catch (error) {
+      logger.error('❌ Erreur suppression token', { shop, error });
+    }
   }
 
   /**

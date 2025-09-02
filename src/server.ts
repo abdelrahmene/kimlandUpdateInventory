@@ -8,9 +8,12 @@ import { apiRoutes } from './routes/api.routes';
 import { debugRoutes } from './routes/debug.routes';
 import { syncRoutes } from './routes/sync.routes';
 import { kimlandRoutes } from './routes/kimland.routes';
+import { adminRoutes } from './routes/admin.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { logger } from './utils/logger';
 import { firebaseService } from './services/firebase.service';
+// Initialiser le service de nettoyage automatique des authentifications
+import './storage/auth-cleanup.service';
 
 const app: Application = express();
 
@@ -57,6 +60,7 @@ app.use('/auth', authRoutes);
 app.use('/api', apiRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/kimland', kimlandRoutes);
+app.use('/admin', adminRoutes); // 🔧 Routes d'administration
 app.use('/debug', debugRoutes);
 
 // Route aide permissions

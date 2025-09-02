@@ -7,6 +7,12 @@ import { ReferenceExtractor } from '../utils/reference-extractor';
 import { shopifyLog } from '../utils/shopify-logger';
 
 export class ShopifyApiService {
+  findOrCreateMetaobject(shop: string, accessToken: string, size: string) {
+    throw new Error('Method not implemented.');
+  }
+  graphql(shop: string, accessToken: string, mutation: string, variables: { input: { id: string; variants: { inventoryQuantity: number; inventoryManagement: string; inventoryPolicy: string; options: { name: string; optionValues: { linkedMetafieldValue: any; }[]; }[]; }[]; }; }) {
+    throw new Error('Method not implemented.');
+  }
   /**
    * Met à jour le SKU d'une variante
    */
@@ -616,6 +622,8 @@ export class ShopifyApiService {
       logger.error('❌ Erreur createVariant', { shop, productId, variantData, error: error.message });
       throw error;
     }
+        return null; // on ne crée rien
+
   }
 
   /**

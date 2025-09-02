@@ -3,6 +3,7 @@ import { config } from '../config';
 import { validateOAuth } from '../middleware/auth.middleware';
 import { shopifyApiService } from '../services/shopify-api.service';
 import { firebaseService } from '../services/firebase.service';
+import { secureStoreService } from '../storage/secure-store.service';
 import { CryptoUtils, ValidationUtils } from '../utils/helpers';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error.middleware';
@@ -115,20 +116,28 @@ router.get('/callback', validateOAuth, asyncHandler(async (req: Request, res: Re
       throw new Error('Access token invalide');
     }
 
-    logger.info('💾 Sauvegarde des données boutique', {
+    logger.info('💾 Sauvegarde des données boutique avec stockage sécurisé', {
       shopId: shopInfo.id,
       shopName: shopInfo.name,
       domain: shopInfo.domain
     });
 
-    // Sauvegarder dans Firebase
+    // 🔐 Sauvegarder avec le nouveau service sécurisé (priorité)
+    await secureStoreService.saveShopAuth(
+      normalizedShop, 
+      accessToken, 
+      config.shopify.scopes
+    );
+
+    // 🔄 Maintenir la compatibilité avec l'ancien système
     await firebaseService.saveShopData({
-      shop: normalizedShop,  // ← AJOUT de ce champ obligatoire
+      shop: normalizedShop,
       id: shopInfo.id.toString(),
       name: shopInfo.name,
       domain: shopInfo.domain,
       myshopifyDomain: normalizedShop,
       accessToken,
+      scope: config.shopify.scopes,
       email: shopInfo.email || '',
       country: shopInfo.country_code || '',
       currency: shopInfo.currency || 'EUR',
@@ -158,24 +167,30 @@ router.get('/callback', validateOAuth, asyncHandler(async (req: Request, res: Re
 }));
 
 /**
- * Désinstallation webhook
+ * Désinstallation webhook (utilise maintenant le stockage sécurisé)
  */
 router.post('/uninstall', asyncHandler(async (req: Request, res: Response) => {
   const shop = req.body.domain;
   
-  logger.info('Webhook de désinstallation reçu', { shop });
+  logger.info('🗑️ Webhook de désinstallation reçu', { shop });
   
   try {
-    await firebaseService.deactivateShop(shop);
+    // Supprimer du stockage sécurisé
+    await secureStoreService.deleteShopAuth(shop);
+    
+    // Supprimer de l'ancien système aussi
+    await firebaseService.removeShopToken(shop);
+    
+    logger.info('✅ Désinstallation terminée', { shop });
     res.status(200).send('OK');
   } catch (error) {
-    logger.error('Erreur lors de la désinstallation', { error, shop });
+    logger.error('❌ Erreur lors de la désinstallation', { error, shop });
     res.status(500).send('Erreur');
   }
 }));
 
 /**
- * Route pour vider le token (force réauth)
+ * Route pour vider le token (utilise maintenant le stockage sécurisé)
  */
 router.post('/clear-token', asyncHandler(async (req: Request, res: Response) => {
   const shop = req.query.shop as string;
@@ -184,10 +199,20 @@ router.post('/clear-token', asyncHandler(async (req: Request, res: Response) => 
     return res.status(400).json({ error: 'Shop requis' });
   }
   
-  const memoryStorage = (await import('../storage/memory-storage.service')).memoryStorage;
-  await memoryStorage.clearShopToken(shop);
-  
-  res.json({ success: true, message: 'Token vidé, réauth nécessaire' });
+  try {
+    // Vider du stockage sécurisé
+    await secureStoreService.invalidateShopAuth(shop);
+    
+    // Vider de l'ancien système aussi pour être sûr
+    const memoryStorage = (await import('../storage/memory-storage.service')).memoryStorage;
+    await memoryStorage.clearShopToken(shop);
+    
+    logger.info('🧹 Token vidé avec stockage sécurisé', { shop });
+    res.json({ success: true, message: 'Token vidé, réauth nécessaire' });
+  } catch (error) {
+    logger.error('❌ Erreur vidage token', { shop, error });
+    res.status(500).json({ error: 'Erreur lors du vidage du token' });
+  }
 }));
 
 export { router as authRoutes };

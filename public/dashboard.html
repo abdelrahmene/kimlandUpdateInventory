@@ -255,6 +255,9 @@
         let currentShop = null;
         let syncResults = [];
         let currentTab = 'products';
+        // 🚫 Variables pour la gestion de l'arrêt de sync
+        let syncAbortController = null;
+        let isSyncCancelled = false;
 
         // Get shop from URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -447,11 +450,16 @@
                 return;
             }
 
+            // Réinitialiser les variables d'arrêt
+            isSyncCancelled = false;
+            syncAbortController = new AbortController();
+
             showSyncModal();
             
             try {
                 const response = await fetch(`/api/sync/inventory/all?shop=${encodeURIComponent(currentShop)}`, {
-                    method: 'POST'
+                    method: 'POST',
+                    signal: syncAbortController.signal // Ajouter le signal d'arrêt
                 });
                 
                 if (!response.ok) {
@@ -463,6 +471,13 @@
 
                 let buffer = '';
                 while (true) {
+                    // Vérifier l'annulation avant chaque lecture
+                    if (isSyncCancelled) {
+                        console.log('🚫 Arrêt de la lecture demandé');
+                        reader.cancel(); // Annuler la lecture du stream
+                        break;
+                    }
+                    
                     const { done, value } = await reader.read();
                     if (done) break;
 
@@ -475,15 +490,24 @@
                             try {
                                 const data = JSON.parse(line);
                                 updateSyncProgress(data);
+                                
+                                // Arrêter si on reçoit un message d'annulation
+                                if (data.type === 'cancelled') {
+                                    console.log('🚫 Synchronisation annulée par le serveur');
+                                    isSyncCancelled = true;
+                                    break;
+                                }
                             } catch (e) {
                                 console.log('Non-JSON line:', line);
                             }
                         }
                     }
+                    
+                    if (isSyncCancelled) break;
                 }
 
                 // Traiter la dernière ligne si elle existe
-                if (buffer.trim()) {
+                if (buffer.trim() && !isSyncCancelled) {
                     try {
                         const data = JSON.parse(buffer);
                         updateSyncProgress(data);
@@ -493,8 +517,17 @@
                 }
 
             } catch (error) {
-                console.error('Erreur sync globale:', error);
-                updateSyncStatus('Erreur de synchronisation: ' + error.message);
+                if (error.name === 'AbortError') {
+                    console.log('🚫 Synchronisation annulée par l\'utilisateur');
+                    updateSyncStatus('🚫 Synchronisation arrêtée par l\'utilisateur');
+                } else {
+                    console.error('Erreur sync globale:', error);
+                    updateSyncStatus('Erreur de synchronisation: ' + error.message);
+                }
+            } finally {
+                // Nettoyer après la synchronisation
+                syncAbortController = null;
+                hideCancelButton();
             }
         }
 
@@ -505,9 +538,8 @@
             document.getElementById('sync-results').innerHTML = '';
             
             // Masquer les éléments d'arrêt initialement
-            document.getElementById('cancel-sync-btn').style.display = 'none';
-            document.getElementById('cancel-info').style.display = 'none';
-            isSyncCancelled = false;
+            hideCancelButton();
+            hideCancelInfo();
         }
 
         function closeSyncModal() {
@@ -653,8 +685,13 @@ statusEl.innerHTML = html;
 
         // 🚫 Nouvelles fonctions pour gérer l'arrêt de synchronisation
         function cancelSync() {
+            console.log('🚫 cancelSync() appelée - Début de la fonction');
+            
             if (!syncAbortController || isSyncCancelled) {
-                console.log('⚠️ Aucune synchronisation à annuler');
+                console.log('⚠️ Aucune synchronisation à annuler', { 
+                    hasSyncAbortController: !!syncAbortController, 
+                    isSyncCancelled 
+                });
                 return;
             }
             
@@ -663,6 +700,7 @@ statusEl.innerHTML = html;
             
             // Annuler la requête HTTP
             if (syncAbortController) {
+                console.log('🚫 Appel de syncAbortController.abort()');
                 syncAbortController.abort();
                 syncAbortController = null;
             }
@@ -675,17 +713,28 @@ statusEl.innerHTML = html;
             if (cancelBtn) {
                 cancelBtn.disabled = true;
                 cancelBtn.innerHTML = '⏳ Arrêt...';
+                console.log('🚫 Bouton désactivé et texte changé');
+            } else {
+                console.error('❌ Bouton cancel-sync-btn non trouvé!');
             }
             
             updateSyncStatus('🚫 Arrêt de la synchronisation en cours...');
+            console.log('🚫 Fin de cancelSync()');
         }
         
         function showCancelButton() {
+            console.log('🚫 showCancelButton() appelée');
             const cancelBtn = document.getElementById('cancel-sync-btn');
             if (cancelBtn && !isSyncCancelled) {
                 cancelBtn.style.display = 'inline-block';
                 cancelBtn.disabled = false;
                 cancelBtn.innerHTML = '🚫 Arrêter';
+                console.log('✅ Bouton d\'arrêt affiché');
+            } else {
+                console.log('⚠️ Bouton non affiché:', { 
+                    hasBtn: !!cancelBtn, 
+                    isSyncCancelled 
+                });
             }
         }
         

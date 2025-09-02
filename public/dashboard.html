@@ -553,14 +553,14 @@
                 // Si on n'a pas encore chargé tous les produits, les charger
                 if (allShopifyProducts.length === 0) {
                     console.log('📦 Chargement de tous les produits Shopify...');
-                    const response = await fetch(`/api/products?shop=${encodeURIComponent(currentShop)}&loadAll=true`);
-                    const data = await response.json();
+                    const response = await fetch(`/api/products?shop=${encodeURIComponent(currentShop)}`);
+                    const responseData = await response.json();
                     
-                    if (data.success && data.products) {
-                        allShopifyProducts = data.products;
+                    if (responseData.success && responseData.products) {
+                        allShopifyProducts = responseData.products;
                         console.log(`✅ ${allShopifyProducts.length} produits chargés en cache`);
                     } else {
-                        throw new Error(data.error || 'Erreur chargement produits');
+                        throw new Error(responseData.error || 'Erreur chargement produits');
                     }
                 }
                 

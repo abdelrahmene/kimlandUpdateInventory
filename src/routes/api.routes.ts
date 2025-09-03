@@ -7,6 +7,7 @@ import { asyncHandler } from '../middleware/error.middleware';
 import { ShopifyProduct } from '../types/shopify.types';
 import { config } from '../config';
 import { firebaseService } from '../services/firebase.service';
+import { ReferenceExtractor } from '../utils/reference-extractor';
 
 const router = Router();
 
@@ -70,9 +71,9 @@ router.put('/products/:productId/update-sku', validateShop, requireAuth, asyncHa
     }
     
     // Extraire la référence depuis description OU titre
-    let reference = extractReferenceFromDescription(product.body_html || '');
+    let reference = ReferenceExtractor.extractFromDescription(product.body_html || '');
     if (!reference) {
-      reference = extractReferenceFromDescription(product.title || '');
+      reference = ReferenceExtractor.extractFromDescription(product.title || '');
     }
     if (!reference) {
       return res.status(400).json({ 
@@ -109,7 +110,7 @@ router.put('/products/:productId/update-sku', validateShop, requireAuth, asyncHa
 }));
 
 /**
- * Met à jour les SKU de tous les produits avec leurs références
+ * Met à jour les SKU de tous les produits avec leurs références - VERSION CORRIGÉE
  */
 router.post('/products/update-all-sku', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
   const shop = req.query.shop as string;
@@ -124,31 +125,70 @@ router.post('/products/update-all-sku', validateShop, requireAuth, asyncHandler(
     
     let updated = 0;
     let skipped = 0;
+    let errors = 0;
     const results = [];
     
     for (const product of products) {
-      let reference = extractReferenceFromDescription(product.body_html || '');
+      // 🎯 CORRECTION 1 : Extraire la référence avec l'extracteur officiel
+      let reference = ReferenceExtractor.extractFromDescription(product.body_html || '');
       if (!reference) {
-        reference = extractReferenceFromDescription(product.title || '');
+        reference = ReferenceExtractor.extractFromDescription(product.title || '');
       }
       
-      if (!reference) {
+      if (!reference || !ReferenceExtractor.isValidReference(reference)) {
         skipped++;
+        results.push({
+          productId: product.id,
+          title: product.title,
+          status: 'skipped',
+          reason: 'Aucune référence valide trouvée'
+        });
         continue;
       }
       
-      // Mettre à jour chaque variante
+      // 🔧 CORRECTION 2 : Normaliser la référence
+      reference = ReferenceExtractor.normalizeReference(reference);
+      
+      // 🔄 CORRECTION 3 : Mettre à jour TOUTES les variantes avec la même référence
+      let productUpdated = 0;
+      let productErrors = 0;
+      
       for (const variant of product.variants) {
         try {
+          // Vérifier si le SKU est déjà correct
+          if (variant.sku === reference) {
+            logger.info('🔄 SKU déjà correct', { productId: product.id, variantId: variant.id, sku: reference });
+            continue;
+          }
+          
           await shopifyApiService.updateVariantSku(
             shop, 
             accessToken, 
             variant.id.toString(), 
             reference
           );
+          productUpdated++;
           updated++;
-        } catch (error) {
-          logger.warn('Erreur variante', { productId: product.id, variantId: variant.id });
+          
+          // Délai entre les requêtes pour éviter le rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        } catch (error: any) {
+          productErrors++;
+          errors++;
+          logger.error('❌ Erreur mise à jour variant SKU', { 
+            productId: product.id, 
+            variantId: variant.id, 
+            reference,
+            error: error.message,
+            status: error.response?.status
+          });
+          
+          // Si erreur 429 (rate limit), attendre plus longtemps
+          if (error.response?.status === 429) {
+            logger.warn('⏳ Rate limit detecté, pause 2s', { productId: product.id });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
       }
       
@@ -156,15 +196,22 @@ router.post('/products/update-all-sku', validateShop, requireAuth, asyncHandler(
         productId: product.id,
         title: product.title,
         reference,
-        variantsUpdated: product.variants.length
+        variantsTotal: product.variants.length,
+        variantsUpdated: productUpdated,
+        variantsErrors: productErrors,
+        status: productErrors === 0 ? 'success' : (productUpdated > 0 ? 'partial' : 'failed')
       });
     }
     
     res.json({
-      success: true,
-      totalProducts: products.length,
-      updated,
-      skipped,
+      success: errors === 0,
+      summary: {
+        totalProducts: products.length,
+        updated,
+        skipped,
+        errors,
+        successRate: products.length > 0 ? Math.round((updated / (updated + errors)) * 100) : 0
+      },
       results
     });
     
@@ -272,7 +319,7 @@ router.get('/dashboard', requireAuth, asyncHandler(async (req: Request, res: Res
           price: variant.price,
           compare_at_price: variant.compare_at_price
         })) || [],
-        reference: extractReferenceFromDescription(product.body_html || ''),
+        reference: ReferenceExtractor.extractFromDescription(product.body_html || ''),
         image: product.images?.[0]?.src || null
       }))
     });
@@ -345,7 +392,7 @@ router.get('/products/search', validateShop, requireAuth, asyncHandler(async (re
         weight: variant.weight,
         barcode: variant.barcode
       })) || [],
-      reference: product.variants?.[0]?.sku || extractReferenceFromDescription(product.body_html || ''),
+      reference: product.variants?.[0]?.sku || ReferenceExtractor.extractFromDescription(product.body_html || ''),
       images: product.images?.map(img => ({
         id: img.id,
         src: img.src,
@@ -404,7 +451,7 @@ router.get('/products', validateShop, requireAuth, asyncHandler(async (req: Requ
         weight: variant.weight,
         barcode: variant.barcode
       })) || [],
-      reference: extractReferenceFromDescription(product.body_html || ''),
+      reference: ReferenceExtractor.extractFromDescription(product.body_html || ''),
       images: product.images?.map(img => ({
         id: img.id,
         src: img.src,
@@ -463,7 +510,7 @@ router.get('/products/:productId', requireAuth, asyncHandler(async (req: Request
       success: true,
       product: {
         ...product,
-        reference: extractReferenceFromDescription(product.body_html || '')
+        reference: ReferenceExtractor.extractFromDescription(product.body_html || '')
       }
     });
     
@@ -474,7 +521,7 @@ router.get('/products/:productId', requireAuth, asyncHandler(async (req: Request
 }));
 
 /**
- * Synchroniser l'inventaire d'un produit avec Kimland
+ * Synchroniser l'inventaire d'un produit avec Kimland - VERSION AMÉLIORÉE
  */
 router.post('/products/:productId/sync-inventory', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
   const shop = req.query.shop as string;
@@ -488,22 +535,38 @@ router.post('/products/:productId/sync-inventory', validateShop, requireAuth, as
       return res.status(404).json({ error: 'Produit non trouvé' });
     }
     
-    // Récupérer le SKU (référence) du produit
-    const sku = product.variants[0]?.sku;
-    if (!sku) {
+    // 🎯 AMÉLIORATION 1 : Utiliser la référence extraite plutôt que le SKU de la première variante
+    let reference = ReferenceExtractor.extractFromDescription(product.body_html || '');
+    if (!reference) {
+      reference = ReferenceExtractor.extractFromDescription(product.title || '');
+    }
+    if (!reference) {
+      reference = product.variants[0]?.sku;
+    }
+    
+    if (!reference || !ReferenceExtractor.isValidReference(reference)) {
       return res.status(400).json({ 
-        error: 'SKU manquant', 
-        message: 'Le produit doit avoir un SKU pour la synchronisation' 
+        error: 'Référence manquante ou invalide', 
+        message: 'Le produit doit avoir une référence valide pour la synchronisation',
+        extractedReference: reference,
+        productTitle: product.title
       });
     }
     
-    // Synchroniser avec Kimland
-    const syncResult = await kimlandService.syncProductInventory(sku, productId);
+    // 🎯 AMÉLIORATION 2 : Passer le nom du produit pour une recherche plus précise
+    const syncResult = await kimlandService.syncProductInventory(
+      reference, 
+      productId, 
+      shop, 
+      accessToken, 
+      product.title // Ajout du nom du produit
+    );
     
     res.json({
       success: syncResult.syncStatus === 'success',
       productId,
-      sku,
+      reference,
+      productTitle: product.title,
       syncResult
     });
     
@@ -514,7 +577,7 @@ router.post('/products/:productId/sync-inventory', validateShop, requireAuth, as
 }));
 
 /**
- * Synchroniser l'inventaire de tous les produits avec Kimland
+ * Synchroniser l'inventaire de tous les produits avec Kimland - VERSION AMÉLIORÉE
  */
 router.post('/products/sync-all-inventory', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
   const shop = req.query.shop as string;
@@ -523,35 +586,127 @@ router.post('/products/sync-all-inventory', validateShop, requireAuth, asyncHand
     const accessToken = req.accessToken!;
     const products = await shopifyApiService.getAllProducts(shop, accessToken);
     
-    // Préparer la liste des produits avec SKU
-    const productsToSync = products
-      .filter(p => p.variants?.[0]?.sku)
-      .map(p => ({
-        sku: p.variants[0].sku!,
-        shopifyProductId: p.id.toString()
-      }));
+    // 🎯 AMÉLIORATION : Préparer la liste des produits avec référence ET nom
+    const productsToSync = [];
+    let invalidProducts = 0;
+    
+    for (const product of products) {
+      // Extraire la référence avec la même logique que pour la sync individuelle
+      let reference = ReferenceExtractor.extractFromDescription(product.body_html || '');
+      if (!reference) {
+        reference = ReferenceExtractor.extractFromDescription(product.title || '');
+      }
+      if (!reference) {
+        reference = product.variants[0]?.sku;
+      }
+      
+      if (reference && ReferenceExtractor.isValidReference(reference)) {
+        productsToSync.push({
+          sku: reference,
+          shopifyProductId: product.id.toString(),
+          productName: product.title // 🎯 Ajout du nom pour recherche précise
+        });
+      } else {
+        invalidProducts++;
+        logger.warn('🚫 Produit sans référence valide ignoré', {
+          productId: product.id,
+          title: product.title,
+          extractedRef: reference,
+          firstVariantSku: product.variants[0]?.sku
+        });
+      }
+    }
     
     if (productsToSync.length === 0) {
       return res.json({
         success: false,
-        message: 'Aucun produit avec SKU trouvé'
+        message: `Aucun produit avec référence valide trouvé (${invalidProducts} produits invalides)`,
+        totalScanned: products.length,
+        invalidProducts
       });
     }
     
-    // Synchroniser avec Kimland
-    const syncResults = await kimlandService.syncMultipleProducts(productsToSync);
+    logger.info('🚀 Début synchronisation batch améliorée', {
+      shop,
+      totalProducts: products.length,
+      validProducts: productsToSync.length,
+      invalidProducts
+    });
+    
+    // 🔄 Synchroniser avec Kimland en utilisant la recherche améliorée
+    const syncResults = [];
+    for (let i = 0; i < productsToSync.length; i++) {
+      const productData = productsToSync[i];
+      
+      logger.info(`📝 Sync ${i + 1}/${productsToSync.length}`, {
+        sku: productData.sku,
+        productName: productData.productName
+      });
+      
+      try {
+        const syncResult = await kimlandService.syncProductInventory(
+          productData.sku,
+          productData.shopifyProductId,
+          shop,
+          accessToken,
+          productData.productName // 🎯 Recherche précise avec nom
+        );
+        
+        syncResults.push({
+          ...syncResult,
+          productName: productData.productName
+        });
+        
+      } catch (error) {
+        logger.error('❌ Erreur sync produit individuel', {
+          sku: productData.sku,
+          productName: productData.productName,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        
+        syncResults.push({
+          sku: productData.sku,
+          shopifyProductId: productData.shopifyProductId,
+          kimlandProduct: null,
+          syncStatus: 'error' as const,
+          errorMessage: error instanceof Error ? error.message : 'Erreur inconnue',
+          syncedAt: new Date(),
+          productName: productData.productName
+        });
+      }
+      
+      // Délai entre les produits pour éviter la surcharge
+      if (i < productsToSync.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
     
     const summary = {
       total: syncResults.length,
       success: syncResults.filter(r => r.syncStatus === 'success').length,
       notFound: syncResults.filter(r => r.syncStatus === 'not_found').length,
-      errors: syncResults.filter(r => r.syncStatus === 'error').length
+      errors: syncResults.filter(r => r.syncStatus === 'error').length,
+      invalidProducts
     };
+    
+    logger.info('✅ Synchronisation batch terminée', {
+      shop,
+      summary,
+      successRate: summary.total > 0 ? Math.round((summary.success / summary.total) * 100) : 0
+    });
     
     res.json({
       success: summary.success > 0,
       summary,
-      results: syncResults
+      results: syncResults.map(r => ({
+        sku: r.sku,
+        productName: r.productName || 'N/A',
+        syncStatus: r.syncStatus,
+        errorMessage: r.errorMessage,
+        kimlandStock: r.kimlandProduct ? 
+          r.kimlandProduct.variants.reduce((total, v) => total + v.stock, 0) : 0,
+        syncedAt: r.syncedAt
+      }))
     });
     
   } catch (error) {
@@ -588,36 +743,304 @@ router.post('/products/sync', requireAuth, asyncHandler(async (req: Request, res
 }));
 
 /**
- * Extraire la référence depuis la description HTML
+ * Routes pour les tests et gestion Kimland
  */
-function extractReferenceFromDescription(html: string): string | null {
-  if (!html) return null;
-  
-  // Nettoyer le HTML
-  const cleanText = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  
-  // Patterns de recherche pour différents formats de référence
-  const patterns = [
-    /ref[erence]*\s*:?\s*([a-zA-Z0-9\-_]+)/i,
-    /référence\s*:?\s*([a-zA-Z0-9\-_]+)/i,
-    /sku\s*:?\s*([a-zA-Z0-9\-_]+)/i,
-    /code\s*:?\s*([a-zA-Z0-9\-_]+)/i,
-    /model\s*:?\s*([a-zA-Z0-9\-_]+)/i,
-    /modèle\s*:?\s*([a-zA-Z0-9\-_]+)/i,
-    // Patterns spécifiques pour vos formats
-    /\b(DP-[A-Z0-9]+)\b/i,
-    /\b([0-9]+F-[0-9]+)\b/i,
-    /\b([A-Z]{2,3}-[A-Z0-9]{2,5})\b/i
-  ];
-  
-  for (const pattern of patterns) {
-    const match = cleanText.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
+
+// Test de connexion Kimland
+router.post('/kimland/test', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const testResult = await kimlandService.testConnection();
+    res.json(testResult);
+  } catch (error) {
+    logger.error('Erreur test Kimland', { error });
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Erreur inconnue' });
   }
+}));
+
+// Statut de connexion Kimland
+router.get('/kimland/status', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const isConnected = await kimlandService.checkConnection();
+    const sessionStats = await kimlandService.getSessionStats();
+    
+    res.json({
+      connected: isConnected,
+      timestamp: new Date().toISOString(),
+      sessionInfo: sessionStats
+    });
+  } catch (error) {
+    logger.error('Erreur statut Kimland', { error });
+    res.json({ connected: false, error: error instanceof Error ? error.message : 'Erreur inconnue' });
+  }
+}));
+
+// Forcer reconnexion Kimland
+router.post('/kimland/force-login', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const reconnectResult = await kimlandService.forceLogin();
+    res.json(reconnectResult);
+  } catch (error) {
+    logger.error('Erreur reconnexion forcée Kimland', { error });
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Erreur inconnue' });
+  }
+}));
+
+// Vider session Kimland
+router.post('/kimland/clear-session', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    await kimlandService.clearSession();
+    res.json({ success: true, message: 'Session vidée avec succès' });
+  } catch (error) {
+    logger.error('Erreur vidage session Kimland', { error });
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Erreur inconnue' });
+  }
+}));
+
+/**
+ * Route pour synchronisation inventaire individuelle (pour recherche)
+ */
+router.post('/sync/product/:productId', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  const shop = req.query.shop as string;
+  const productId = req.params.productId;
   
-  return null;
-}
+  try {
+    const accessToken = req.accessToken!;
+    const product = await shopifyApiService.getProduct(shop, accessToken, productId);
+    
+    if (!product) {
+      return res.status(404).json({ success: false, error: 'Produit non trouvé' });
+    }
+    
+    // Extraire la référence
+    let reference = ReferenceExtractor.extractFromDescription(product.body_html || '');
+    if (!reference) {
+      reference = ReferenceExtractor.extractFromDescription(product.title || '');
+    }
+    if (!reference) {
+      reference = product.variants[0]?.sku;
+    }
+    
+    if (!reference || !ReferenceExtractor.isValidReference(reference)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Référence manquante ou invalide',
+        extractedReference: reference,
+        productTitle: product.title
+      });
+    }
+    
+    // Synchroniser avec Kimland
+    const syncResult = await kimlandService.syncProductInventory(
+      reference,
+      productId,
+      shop,
+      accessToken,
+      product.title
+    );
+    
+    // Calculer les statistiques pour la réponse
+    const kimlandStock = syncResult.kimlandProduct ? 
+      syncResult.kimlandProduct.variants.reduce((total, v) => total + v.stock, 0) : 0;
+    
+    res.json({
+      success: syncResult.syncStatus === 'success',
+      productId,
+      sku: reference,
+      productName: product.title,
+      syncResult,
+      kimlandStock,
+      updatedQuantity: kimlandStock // Pour compatibilité avec l'interface
+    });
+    
+  } catch (error) {
+    logger.error('Erreur sync produit individuel', { error, shop, productId });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erreur lors de la synchronisation',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+}));
+
+/**
+ * Route pour synchronisation inventaire globale en streaming
+ */
+router.post('/sync/inventory/all', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  const shop = req.query.shop as string;
+  
+  try {
+    const accessToken = req.accessToken!;
+    const products = await shopifyApiService.getAllProducts(shop, accessToken);
+    
+    // Préparer les produits avec références valides
+    const productsToSync = [];
+    let invalidProducts = 0;
+    
+    for (const product of products) {
+      let reference = ReferenceExtractor.extractFromDescription(product.body_html || '');
+      if (!reference) {
+        reference = ReferenceExtractor.extractFromDescription(product.title || '');
+      }
+      if (!reference) {
+        reference = product.variants[0]?.sku;
+      }
+      
+      if (reference && ReferenceExtractor.isValidReference(reference)) {
+        productsToSync.push({
+          sku: reference,
+          shopifyProductId: product.id.toString(),
+          productName: product.title
+        });
+      } else {
+        invalidProducts++;
+      }
+    }
+    
+    if (productsToSync.length === 0) {
+      return res.json({
+        type: 'complete',
+        message: `Aucun produit avec référence valide trouvé (${invalidProducts} produits invalides)`,
+        successful: 0,
+        failed: 0,
+        total: 0,
+        successRate: 0,
+        duration: 0
+      });
+    }
+    
+    // Configuration streaming
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    const startTime = Date.now();
+    let successful = 0;
+    let failed = 0;
+    let cancelled = false;
+    
+    // Envoyer message de démarrage
+    res.write(JSON.stringify({
+      type: 'info',
+      message: `Synchronisation de ${productsToSync.length} produits`,
+      canCancel: true,
+      total: productsToSync.length
+    }) + '\n');
+    
+    // Gérer l'arrêt de la connexion
+    req.on('close', () => {
+      cancelled = true;
+      logger.info('🚫 Client disconnected, arrêt de la synchronisation');
+    });
+    
+    req.on('aborted', () => {
+      cancelled = true;
+      logger.info('🚫 Request aborted, arrêt de la synchronisation');
+    });
+    
+    // Synchroniser chaque produit
+    for (let i = 0; i < productsToSync.length; i++) {
+      if (cancelled) {
+        res.write(JSON.stringify({
+          type: 'cancelled',
+          message: 'Synchronisation arrêtée par l\'utilisateur',
+          stoppedAt: i
+        }) + '\n');
+        break;
+      }
+      
+      const productData = productsToSync[i];
+      
+      try {
+        // Envoyer le progrès
+        res.write(JSON.stringify({
+          type: 'progress',
+          message: `Synchronisation en cours...`,
+          current: i + 1,
+          total: productsToSync.length,
+          percentage: Math.round(((i + 1) / productsToSync.length) * 100),
+          productName: productData.productName,
+          canCancel: true
+        }) + '\n');
+        
+        // Synchroniser le produit
+        const syncResult = await kimlandService.syncProductInventory(
+          productData.sku,
+          productData.shopifyProductId,
+          shop,
+          accessToken,
+          productData.productName
+        );
+        
+        if (syncResult.syncStatus === 'success') {
+          successful++;
+        } else {
+          failed++;
+        }
+        
+        // Envoyer le résultat
+        res.write(JSON.stringify({
+          type: 'result',
+          sku: productData.sku,
+          productName: productData.productName,
+          message: syncResult.errorMessage || 'Synchronisé avec succès',
+          success: syncResult.syncStatus === 'success',
+          kimlandStock: syncResult.kimlandProduct ? 
+            syncResult.kimlandProduct.variants.reduce((total, v) => total + v.stock, 0) : 0,
+          variantsCount: syncResult.kimlandProduct?.variants.length || 0,
+          timestamp: new Date().toISOString()
+        }) + '\n');
+        
+      } catch (error) {
+        failed++;
+        logger.error('❌ Erreur sync produit streaming', {
+          sku: productData.sku,
+          productName: productData.productName,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        
+        res.write(JSON.stringify({
+          type: 'result',
+          sku: productData.sku,
+          productName: productData.productName,
+          message: error instanceof Error ? error.message : 'Erreur inconnue',
+          success: false,
+          timestamp: new Date().toISOString()
+        }) + '\n');
+      }
+      
+      // Délai entre les produits
+      if (i < productsToSync.length - 1 && !cancelled) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    if (!cancelled) {
+      // Envoyer le résumé final
+      const duration = Date.now() - startTime;
+      const successRate = productsToSync.length > 0 ? Math.round((successful / productsToSync.length) * 100) : 0;
+      
+      res.write(JSON.stringify({
+        type: 'complete',
+        message: 'Synchronisation terminée',
+        successful,
+        failed,
+        total: productsToSync.length,
+        successRate,
+        duration,
+        invalidProducts
+      }) + '\n');
+    }
+    
+    res.end();
+    
+  } catch (error) {
+    logger.error('Erreur sync streaming global', { error, shop });
+    res.write(JSON.stringify({
+      type: 'error',
+      message: error instanceof Error ? error.message : 'Erreur inconnue'
+    }) + '\n');
+    res.end();
+  }
+}));
 
 export { router as apiRoutes };

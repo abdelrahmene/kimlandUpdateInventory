@@ -226,17 +226,17 @@ export class KimlandAuthService {
   }
 
   /**
-   * Rechercher un produit par SKU
+   * Rechercher un produit par SKU avec nom produit pour plus de précision
    */
-  async searchProductBySku(sku: string): Promise<KimlandProduct | null> {
+  async searchProductBySku(sku: string, productName?: string): Promise<KimlandProduct | null> {
     try {
       if (!this.isAuthenticated) {
         throw new Error('Non authentifié sur Kimland');
       }
 
-      logger.info('🔍 Recherche produit Kimland', { sku });
+      logger.info('🔍 Recherche produit Kimland', { sku, productName });
 
-      // URL de recherche Kimland - utiliser l'interface publique (première position)
+      // 🎯 ÉTAPE 1 : Recherche uniquement par SKU
       const searchUrls = [
         `/index.php?page=products&pages=0&keyword=${encodeURIComponent(sku)}`,
         `/products.php?search=${encodeURIComponent(sku)}`,
@@ -352,7 +352,7 @@ export class KimlandAuthService {
         bodyClasses: searchDoc.body?.className || 'N/A'
       });
 
-      // 2. CORRECTION MAJEURE : Sélecteurs prioritaires pour éviter les filtres
+      // 🎯 ÉTAPE 2 : Parmi les résultats de la recherche SKU, trouver le bon produit avec le nom
       const productSelectors = [
         // 1. Sélecteurs spécifiques aux cartes produits (priorité haute)
         '.product-item.col-6', // Structure typique Kimland
@@ -379,8 +379,12 @@ export class KimlandAuthService {
         'article'
       ];
       
-      let productElement = null;
+      let bestProductElement = null;
+      let bestScore = 0;
       let usedSelector = '';
+      
+      // 🔍 Collecter tous les produits candidats
+      const candidateProducts = [];
       
       for (const selector of productSelectors) {
         const elements = searchDoc.querySelectorAll(selector);
@@ -392,7 +396,7 @@ export class KimlandAuthService {
         });
         
         if (elements.length > 0) {
-          // Filtrer les éléments pour éviter les filtres/labels
+          // Analyser chaque élément candidat
           for (const element of Array.from(elements)) {
             // Ignorer les éléments qui sont clairement des filtres
             if (element.tagName.toLowerCase() === 'label' ||
@@ -402,15 +406,6 @@ export class KimlandAuthService {
                 element.innerHTML.includes('name="categori') ||
                 element.className.includes('filter') ||
                 element.id.includes('filter')) {
-              
-              logger.info('🙅‍♂️ Élément filtré (pas un produit)', {
-                sku,
-                selector,
-                tagName: element.tagName,
-                className: element.className,
-                id: element.id,
-                innerHTML: element.innerHTML.substring(0, 100)
-              });
               continue;
             }
             
@@ -420,35 +415,137 @@ export class KimlandAuthService {
             const hasTitle = element.querySelector('[class*="name"], [class*="title"], h1, h2, h3, h4') !== null;
             const hasPrice = element.querySelector('[class*="price"], [class*="cost"]') !== null;
             
-            const productScore = Number(hasLink) + Number(hasImage) + Number(hasTitle) + Number(hasPrice);
+            // Score de base pour un produit valide
+            let productScore = Number(hasLink) + Number(hasImage) + Number(hasTitle) + Number(hasPrice);
             
-            logger.info('🎯 Analyse élément produit potentiel', {
-              sku,
-              selector,
-              hasLink,
-              hasImage,
-              hasTitle,
-              hasPrice,
-              score: productScore,
-              className: element.className,
-              innerHTML: element.innerHTML.substring(0, 200)
-            });
-            
-            // Minimum 2 indicateurs sur 4 pour considérer comme un vrai produit
-            if (productScore >= 2) {
-              productElement = element;
-              usedSelector = selector;
-              logger.info('✅ Élément produit valide trouvé', { 
-                sku, 
+            if (productScore >= 2) { // Minimum pour être considéré comme un produit
+              candidateProducts.push({
+                element,
                 selector,
-                score: productScore,
-                elementClass: element.className
+                baseScore: productScore
               });
+            }
+          }
+          
+          // Si on a trouvé des candidats avec ce sélecteur, on peut arrêter
+          if (candidateProducts.length > 0) {
+            usedSelector = selector;
+            break;
+          }
+        }
+      }
+      
+      logger.info('📈 Candidats produits trouvés', {
+        sku,
+        candidateCount: candidateProducts.length,
+        usedSelector
+      });
+      
+      // 🎯 ÉTAPE 2 : Parmi les candidats, trouver le meilleur match avec le nom du produit
+      if (candidateProducts.length > 0) {
+        for (const candidate of candidateProducts) {
+          const element = candidate.element;
+          let finalScore = candidate.baseScore;
+          
+          // Extraire le nom du produit depuis l'élément
+          const nameSelectors = [
+            '.product-item-name a',
+            '.product-name a', 
+            '.title a',
+            'a[title]',
+            'h1 a', 'h2 a', 'h3 a',
+            'a'
+          ];
+          
+          let elementProductName = '';
+          for (const nameSelector of nameSelectors) {
+            const nameEl = element.querySelector(nameSelector) as HTMLAnchorElement;
+            if (nameEl && nameEl.textContent?.trim()) {
+              elementProductName = nameEl.textContent.trim();
               break;
             }
           }
           
-          if (productElement) break;
+          // Bonus pour correspondance SKU dans le contenu
+          const elementText = element.textContent?.toLowerCase() || '';
+          if (elementText.includes(sku.toLowerCase())) {
+            finalScore += 5; // Gros bonus pour match SKU exact
+            logger.info('🎯 Bonus SKU exact dans le contenu', { 
+              sku, 
+              elementProductName,
+              elementText: elementText.substring(0, 100) 
+            });
+          }
+          
+          // 🎯 BONUS PRINCIPAL : Correspondance avec le nom du produit Shopify
+          if (productName && elementProductName) {
+            const shopifyNameNormalized = productName.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, ' ').trim();
+            const kimlandNameNormalized = elementProductName.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, ' ').trim();
+            
+            // Méthode 1 : Correspondance exacte
+            if (shopifyNameNormalized === kimlandNameNormalized) {
+              finalScore += 10; // Très gros bonus pour match exact
+              logger.info('🏆 MATCH EXACT du nom de produit', {
+                sku,
+                shopifyName: productName,
+                kimlandName: elementProductName
+              });
+            }
+            // Méthode 2 : Correspondance partielle par mots-clés
+            else {
+              const shopifyWords = shopifyNameNormalized.split(' ').filter(w => w.length > 2);
+              const kimlandWords = kimlandNameNormalized.split(' ').filter(w => w.length > 2);
+              
+              let matchingWords = 0;
+              for (const shopifyWord of shopifyWords) {
+                for (const kimlandWord of kimlandWords) {
+                  if (shopifyWord.includes(kimlandWord) || kimlandWord.includes(shopifyWord)) {
+                    matchingWords++;
+                    break;
+                  }
+                }
+              }
+              
+              if (matchingWords > 0) {
+                const matchRatio = matchingWords / Math.max(shopifyWords.length, kimlandWords.length);
+                const bonus = Math.round(matchRatio * 7); // Bonus proportionnel
+                finalScore += bonus;
+                
+                logger.info('🎯 Bonus correspondance partielle nom', {
+                  sku,
+                  matchingWords,
+                  matchRatio,
+                  bonus,
+                  shopifyWords,
+                  kimlandWords,
+                  shopifyName: productName,
+                  kimlandName: elementProductName
+                });
+              }
+            }
+          }
+          
+          logger.info('📊 Score final candidat', {
+            sku,
+            productName: elementProductName,
+            baseScore: candidate.baseScore,
+            finalScore,
+            selector: candidate.selector
+          });
+          
+          // Garder le meilleur candidat
+          if (finalScore > bestScore) {
+            bestScore = finalScore;
+            bestProductElement = element;
+            usedSelector = candidate.selector;
+            
+            logger.info('🏅 Nouveau meilleur candidat', {
+              sku,
+              productName: elementProductName,
+              score: finalScore,
+              selector: candidate.selector
+            });
+          }
         }
       }
       
@@ -468,7 +565,7 @@ export class KimlandAuthService {
           .slice(0, 10)
       });
 
-      if (!productElement) {
+      if (!bestProductElement) {
         // Vérifier si la page contient un message d'erreur "n'existe pas"
         const pageText = searchDoc.body?.textContent || '';
         const containsSku = pageText.includes(sku);
@@ -479,6 +576,7 @@ export class KimlandAuthService {
         
         logger.warn('⚠️ Aucun élément produit trouvé', { 
           sku,
+          productName,
           containsSkuInText: containsSku,
           hasErrorMessage,
           usedSelectors: productSelectors,
@@ -502,8 +600,9 @@ export class KimlandAuthService {
       logger.info('✅ Élément produit trouvé avec sélecteur', { 
         sku, 
         usedSelector,
-        elementClass: productElement.className,
-        innerHTML: productElement.innerHTML.substring(0, 200)
+        bestScore,
+        elementClass: bestProductElement.className,
+        innerHTML: bestProductElement.innerHTML.substring(0, 200)
       });
 
       // Extraire les infos du produit avec sélecteurs flexibles
@@ -517,7 +616,7 @@ export class KimlandAuthService {
       
       let productLink = null;
       for (const selector of linkSelectors) {
-        productLink = productElement.querySelector(selector) as HTMLAnchorElement;
+        productLink = bestProductElement.querySelector(selector) as HTMLAnchorElement;
         if (productLink && (productLink.href || productLink.onclick)) {
           logger.info('🔗 Lien produit trouvé', {
             sku,
@@ -538,14 +637,14 @@ export class KimlandAuthService {
         'a'
       ];
       
-      let productName = null;
+      let productNameElement = null;
       for (const selector of nameSelectors) {
-        productName = productElement.querySelector(selector) as HTMLAnchorElement;
-        if (productName && productName.textContent?.trim()) {
+        productNameElement = bestProductElement.querySelector(selector) as HTMLAnchorElement;
+        if (productNameElement && productNameElement.textContent?.trim()) {
           logger.info('📝 Nom produit trouvé', {
             sku,
             selector,
-            name: productName.textContent?.substring(0, 50)
+            name: productNameElement.textContent?.substring(0, 50)
           });
           break;
         }
@@ -560,7 +659,7 @@ export class KimlandAuthService {
       
       let productImage = null;
       for (const selector of imageSelectors) {
-        productImage = productElement.querySelector(selector) as HTMLImageElement;
+        productImage = bestProductElement.querySelector(selector) as HTMLImageElement;
         if (productImage && productImage.src) {
           logger.info('🖼️ Image produit trouvée', {
             sku,
@@ -571,24 +670,24 @@ export class KimlandAuthService {
         }
       }
       
-      const priceElement = productElement.querySelector('.price, [class*="price"], .cost, [class*="cost"]') as HTMLElement;
-      const oldPriceElement = productElement.querySelector('.old-price, [class*="old"], .was-price') as HTMLElement;
+      const priceElement = bestProductElement.querySelector('.price, [class*="price"], .cost, [class*="cost"]') as HTMLElement;
+      const oldPriceElement = bestProductElement.querySelector('.old-price, [class*="old"], .was-price') as HTMLElement;
 
       logger.info('🔍 Infos produit extraites', {
         sku,
         hasLink: !!productLink,
-        hasName: !!productName,
+        hasName: !!productNameElement,
         hasImage: !!productImage,
         linkHref: productLink?.href || 'N/A',
-        nameText: productName?.textContent || 'N/A'
+        nameText: productNameElement?.textContent || 'N/A'
       });
 
-      if (!productLink || !productName) {
+      if (!productLink || !productNameElement) {
         logger.error('❌ Impossible d\'extraire les infos produit', {
           sku,
           hasLink: !!productLink,
-          hasName: !!productName,
-          elementHTML: productElement.innerHTML
+          hasName: !!productNameElement,
+          elementHTML: bestProductElement.innerHTML
         });
         throw new Error('Impossible d\'extraire les infos produit');
       }
@@ -784,7 +883,7 @@ export class KimlandAuthService {
       
       const product: KimlandProduct = {
         id: productUrl.split('/').slice(-2, -1)[0] || 'unknown',
-        name: productName.textContent?.trim() || '',
+        name: productNameElement.textContent?.trim() || '',
         url: productUrl,
         price: priceElement?.textContent?.trim() || '',
         oldPrice: oldPriceElement?.textContent?.trim(),

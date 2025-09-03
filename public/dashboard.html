@@ -675,10 +675,17 @@
                                         <span class="hidden sm:inline">Synchroniser</span>
                                         <span class="sm:hidden">Sync</span>
                                     </button>
+                                    <button 
+                                        onclick="updateProductSKU(${product.id}, '${product.title.replace(/'/g, "\'")}')"  
+                                        class="bg-gradient-to-r from-orange-500 to-red-600 text-white px-4 py-2 rounded-lg hover:from-orange-600 hover:to-red-700 font-medium transition-all duration-200 flex items-center shadow-md hover:shadow-lg mb-2">
+                                        <span class="mr-1">🔧</span>
+                                        <span class="hidden sm:inline text-sm">MAJ SKU</span>
+                                        <span class="sm:hidden text-xs">SKU</span>
+                                    </button>
                                 ` : `
                                     <button 
-                                        onclick="updateSKU(${product.id})"
-                                        class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-indigo-700 font-semibold transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+                                        onclick="updateProductSKU(${product.id}, '${product.title.replace(/'/g, "\'")}')"  
+                                        class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-indigo-700 font-semibold transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-1 mb-2">
                                         <span class="mr-2">🏷️</span>
                                         <span class="hidden sm:inline">Ajouter SKU</span>
                                         <span class="sm:hidden">SKU</span>
@@ -1439,6 +1446,36 @@ window.addEventListener('load', () => {
                 }
             } catch (error) {
                 alert('Erreur de connexion');
+            }
+        }
+
+        // Nouvelle fonction pour mettre à jour le SKU d'un produit spécifique
+        async function updateProductSKU(productId, productTitle) {
+            if (!confirm(`Mettre à jour le SKU/référence pour "${productTitle}" ?\nCeci va rechercher et appliquer la référence Kimland correspondante.`)) {
+                return;
+            }
+            
+            try {
+                console.log('🏷️ Début mise à jour SKU produit:', { productId, productTitle });
+                
+                const response = await fetch(`/api/products/${productId}/update-sku?shop=${encodeURIComponent(currentShop)}`, {
+                    method: 'PUT'
+                });
+                
+                const result = await response.json();
+                console.log('📥 Résultat mise à jour SKU:', result);
+                
+                if (result.success) {
+                    alert(`✅ SKU mis à jour avec succès!\nProduit: ${productTitle}\nNouveau SKU: ${result.reference}`);
+                    
+                    // Actualiser la recherche pour voir les changements
+                    await searchProducts();
+                } else {
+                    alert(`❌ Erreur lors de la mise à jour du SKU:\n${result.error}`);
+                }
+            } catch (error) {
+                console.error('❌ Erreur réseau mise à jour SKU:', error);
+                alert('❌ Erreur de connexion lors de la mise à jour du SKU: ' + error.message);
             }
         }
 

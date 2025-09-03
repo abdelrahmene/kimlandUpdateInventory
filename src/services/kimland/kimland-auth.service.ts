@@ -352,79 +352,181 @@ export class KimlandAuthService {
         bodyClasses: searchDoc.body?.className || 'N/A'
       });
 
-      // 2. Essayer différents sélecteurs pour trouver les produits
-      const possibleSelectors = [
+      // 2. CORRECTION MAJEURE : Sélecteurs prioritaires pour éviter les filtres
+      const productSelectors = [
+        // 1. Sélecteurs spécifiques aux cartes produits (priorité haute)
+        '.product-item.col-6', // Structure typique Kimland
         '.product-item',
+        '.product-card',
+        '.item.col-6',
+        '.product.col-6',
+        
+        // 2. Conteneurs de produits dans la grille
+        '.products .col-6',
+        '.row .col-6',
+        '[class*="col-6"][class*="product"]',
+        
+        // 3. Divs avec liens vers produits (plus fiables que les inputs)
+        'div[onclick*="product"]',
+        'div[onclick*="item"]',
+        'a[href*="product"]',
+        'a[href*="item"]',
+        
+        // 4. Derniers recours (plus génériques)
         '.product',
-        '.item',
         '[class*="product"]',
-        '[class*="item"]',
         '.card',
-        '[class*="card"]',
-        '.article',
-        '[data-product]',
-        'article',
-        '.box'
+        'article'
       ];
       
-      let productElement;
-      for (const selector of possibleSelectors) {
-        productElement = searchDoc.querySelector(selector);
-        if (productElement) {
-          logger.info('🎯 Sélecteur produit trouvé', { sku, selector, className: productElement.className });
-          break;
+      let productElement = null;
+      let usedSelector = '';
+      
+      for (const selector of productSelectors) {
+        const elements = searchDoc.querySelectorAll(selector);
+        
+        logger.info(`🔍 Test sélecteur: ${selector}`, {
+          sku,
+          selector,
+          found: elements.length
+        });
+        
+        if (elements.length > 0) {
+          // Filtrer les éléments pour éviter les filtres/labels
+          for (const element of Array.from(elements)) {
+            // Ignorer les éléments qui sont clairement des filtres
+            if (element.tagName.toLowerCase() === 'label' ||
+                element.tagName.toLowerCase() === 'input' ||
+                element.innerHTML.includes('input type="checkbox"') ||
+                element.innerHTML.includes('name="pointure"') ||
+                element.innerHTML.includes('name="categori') ||
+                element.className.includes('filter') ||
+                element.id.includes('filter')) {
+              
+              logger.info('🙅‍♂️ Élément filtré (pas un produit)', {
+                sku,
+                selector,
+                tagName: element.tagName,
+                className: element.className,
+                id: element.id,
+                innerHTML: element.innerHTML.substring(0, 100)
+              });
+              continue;
+            }
+            
+            // Vérifier que l'élément contient du contenu de produit
+            const hasLink = element.querySelector('a[href]') !== null;
+            const hasImage = element.querySelector('img') !== null;
+            const hasTitle = element.querySelector('[class*="name"], [class*="title"], h1, h2, h3, h4') !== null;
+            const hasPrice = element.querySelector('[class*="price"], [class*="cost"]') !== null;
+            
+            const productScore = Number(hasLink) + Number(hasImage) + Number(hasTitle) + Number(hasPrice);
+            
+            logger.info('🎯 Analyse élément produit potentiel', {
+              sku,
+              selector,
+              hasLink,
+              hasImage,
+              hasTitle,
+              hasPrice,
+              score: productScore,
+              className: element.className,
+              innerHTML: element.innerHTML.substring(0, 200)
+            });
+            
+            // Minimum 2 indicateurs sur 4 pour considérer comme un vrai produit
+            if (productScore >= 2) {
+              productElement = element;
+              usedSelector = selector;
+              logger.info('✅ Élément produit valide trouvé', { 
+                sku, 
+                selector,
+                score: productScore,
+                elementClass: element.className
+              });
+              break;
+            }
+          }
+          
+          if (productElement) break;
         }
       }
       
-      // Debug: lister tous les éléments trouvés
-      const allProductElements = searchDoc.querySelectorAll('[class*="product"], [class*="item"], .card, article');
-      logger.info('🔍 Éléments trouvés sur la page', {
+      // Debug: lister tous les éléments trouvés pour diagnostic
+      const allProductElements = searchDoc.querySelectorAll('[class*="product"], [class*="item"], .card, article, .col-6');
+      logger.info('🔍 Diagnostic complet éléments page', {
         sku,
         totalElements: allProductElements.length,
-        elementClasses: Array.from(allProductElements).map(el => el.className).slice(0, 10)
+        elementsByType: Array.from(allProductElements).reduce((acc, el) => {
+          const type = el.tagName.toLowerCase();
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+        topClasses: Array.from(allProductElements)
+          .map(el => el.className)
+          .filter(c => c && c.length > 0)
+          .slice(0, 10)
       });
 
       if (!productElement) {
-        // Tentative de recherche dans le texte de la page
+        // Vérifier si la page contient un message d'erreur "n'existe pas"
         const pageText = searchDoc.body?.textContent || '';
         const containsSku = pageText.includes(sku);
+        const hasErrorMessage = pageText.includes("n'existe pas") || 
+                               pageText.includes("recherche n'existe") ||
+                               pageText.includes("aucun résultat") ||
+                               pageText.includes("produit introuvable");
         
         logger.warn('⚠️ Aucun élément produit trouvé', { 
           sku,
           containsSkuInText: containsSku,
-          availableClasses: Array.from(searchDoc.querySelectorAll('*'))
-            .map(el => el.className)
-            .filter(c => c && c.length > 0)
-            .slice(0, 20),
-          textSample: pageText.substring(0, 500)
+          hasErrorMessage,
+          usedSelectors: productSelectors,
+          pageStructure: {
+            totalDivs: searchDoc.querySelectorAll('div').length,
+            totalLinks: searchDoc.querySelectorAll('a').length,
+            hasProducts: pageText.includes('product'),
+            hasItems: pageText.includes('item')
+          }
         });
         
-        if (containsSku) {
-          logger.info('🔍 SKU trouvé dans le texte, mais structure inconnue', { sku });
+        if (hasErrorMessage) {
+          logger.info('❌ Kimland confirme que le produit n\'existe pas', { sku });
+        } else if (containsSku) {
+          logger.info('🔍 SKU trouvé dans le texte, mais structure non reconnue', { sku });
         }
         
         return null;
       }
 
-      logger.info('✅ Élément produit trouvé', { 
+      logger.info('✅ Élément produit trouvé avec sélecteur', { 
         sku, 
+        usedSelector,
         elementClass: productElement.className,
         innerHTML: productElement.innerHTML.substring(0, 200)
       });
 
       // Extraire les infos du produit avec sélecteurs flexibles
       const linkSelectors = [
-        '.product-item-img',
         'a[href*="product"]',
         'a[href*="item"]', 
         'a[href*="article"]',
+        'a[onclick]',
         'a'
       ];
       
-      let productLink;
+      let productLink = null;
       for (const selector of linkSelectors) {
         productLink = productElement.querySelector(selector) as HTMLAnchorElement;
-        if (productLink && productLink.href) break;
+        if (productLink && (productLink.href || productLink.onclick)) {
+          logger.info('🔗 Lien produit trouvé', {
+            sku,
+            selector,
+            href: productLink.href || 'onclick',
+            text: productLink.textContent?.substring(0, 50)
+          });
+          break;
+        }
       }
       
       const nameSelectors = [
@@ -436,10 +538,17 @@ export class KimlandAuthService {
         'a'
       ];
       
-      let productName;
+      let productName = null;
       for (const selector of nameSelectors) {
         productName = productElement.querySelector(selector) as HTMLAnchorElement;
-        if (productName && productName.textContent?.trim()) break;
+        if (productName && productName.textContent?.trim()) {
+          logger.info('📝 Nom produit trouvé', {
+            sku,
+            selector,
+            name: productName.textContent?.substring(0, 50)
+          });
+          break;
+        }
       }
       
       const imageSelectors = [
@@ -449,10 +558,17 @@ export class KimlandAuthService {
         'img'
       ];
       
-      let productImage;
+      let productImage = null;
       for (const selector of imageSelectors) {
         productImage = productElement.querySelector(selector) as HTMLImageElement;
-        if (productImage && productImage.src) break;
+        if (productImage && productImage.src) {
+          logger.info('🖼️ Image produit trouvée', {
+            sku,
+            selector,
+            src: productImage.src.substring(0, 100)
+          });
+          break;
+        }
       }
       
       const priceElement = productElement.querySelector('.price, [class*="price"], .cost, [class*="cost"]') as HTMLElement;

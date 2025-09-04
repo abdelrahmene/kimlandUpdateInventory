@@ -10,6 +10,7 @@ class OrdersModule {
             errors: 0
         };
         this.isConnected = false;
+        this.eventSource = null; // Pour stocker la connexion SSE
         
         this.init();
     }
@@ -47,7 +48,14 @@ class OrdersModule {
     connectToRealTimeOrders() {
         console.log('🔗 [DEBUG] Tentative de connexion EventSource...');
         
+        // Fermer la connexion existante si nécessaire
+        if (this.eventSource) {
+            console.log('🔗 [DEBUG] Fermeture de la connexion existante...');
+            this.eventSource.close();
+        }
+        
         const eventSource = new EventSource('/api/logs/stream');
+        this.eventSource = eventSource; // Stocker la référence
         
         eventSource.onopen = () => {
             console.log('✅ [DEBUG] EventSource connecté avec succès');
@@ -75,7 +83,7 @@ class OrdersModule {
                         console.warn('⚠️ [DEBUG] Webhook sans données ! Data complet:', data);
                     }
                 } else if (data.type === 'connected') {
-                    console.log('🔗 [DEBUG] Message de connexion SSE');
+                    console.log('🔗 [DEBUG] Message de connexion SSE reçu:', data.message);
                 } else {
                     console.log('ℹ️ [DEBUG] Message ignoré - Type:', data.type, 'Data:', !!data.data);
                 }
@@ -88,9 +96,20 @@ class OrdersModule {
         eventSource.onerror = (error) => {
             console.error('❌ [DEBUG] Erreur EventSource:', error);
             console.log('🔄 [DEBUG] EventSource readyState:', eventSource.readyState);
-            console.log('🔄 [DEBUG] EventSource CONNECTING:', eventSource.CONNECTING);
-            console.log('🔄 [DEBUG] EventSource OPEN:', eventSource.OPEN);
-            console.log('🔄 [DEBUG] EventSource CLOSED:', eventSource.CLOSED);
+            console.log('🔄 [DEBUG] EventSource CONNECTING:', EventSource.CONNECTING);
+            console.log('🔄 [DEBUG] EventSource OPEN:', EventSource.OPEN);
+            console.log('🔄 [DEBUG] EventSource CLOSED:', EventSource.CLOSED);
+            
+            // Si la connexion se ferme, tenter une reconnexion après 5 secondes
+            if (eventSource.readyState === EventSource.CLOSED) {
+                console.log('♾️ [DEBUG] Reconnexion dans 5 secondes...');
+                setTimeout(() => {
+                    if (this.eventSource === eventSource) { // Vérifier que c'est toujours notre instance
+                        console.log('♾️ [DEBUG] Tentative de reconnexion...');
+                        this.connectToRealTimeOrders();
+                    }
+                }, 5000);
+            }
         };
         
         // Test de connexion après 2 secondes
@@ -99,6 +118,10 @@ class OrdersModule {
             console.log('  - ReadyState:', eventSource.readyState);
             console.log('  - URL:', eventSource.url);
             console.log('  - WithCredentials:', eventSource.withCredentials);
+            
+            if (eventSource.readyState !== EventSource.OPEN) {
+                console.warn('⚠️ [DEBUG] EventSource pas ouvert après 2s, état:', eventSource.readyState);
+            }
         }, 2000);
         
         // Stocker la référence pour debugging

@@ -256,31 +256,16 @@
                     <!-- Commandes en temps réel -->
                     <div class="orders-realtime">
                         <div class="realtime-header">
-                            <h3 class="text-lg font-semibold text-gray-900 mb-2">📦 Commandes en temps réel</h3>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">📦 Commandes Shopify Reçues</h3>
                             <div class="live-indicator">
                                 <span class="live-dot"></span>
                                 <span class="text-sm text-gray-600">En direct</span>
                             </div>
                         </div>
                         
-                        <div id="orders-console" class="orders-console">
-                            <div class="console-header">
-                                <div class="console-controls">
-                                    <div class="control-dot red"></div>
-                                    <div class="control-dot yellow"></div>
-                                    <div class="control-dot green"></div>
-                                </div>
-                                <div class="console-title">Kimland Sync Console</div>
-                            </div>
-                            <div id="console-content" class="console-content">
-                                <div class="console-line welcome">
-                                    <span class="timestamp">🚀</span>
-                                    <span class="message">Système de synchronisation Shopify → Kimland initialisé</span>
-                                </div>
-                                <div class="console-line info">
-                                    <span class="timestamp">📡</span>
-                                    <span class="message">En attente des commandes Shopify...</span>
-                                </div>
+                        <div id="orders-list" class="orders-list">
+                            <div class="empty-state">
+                                <span class="text-gray-500">⏳ En attente des commandes Shopify...</span>
                             </div>
                         </div>
                     </div>

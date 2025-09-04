@@ -268,3 +268,192 @@
 .collapsible-content.expanded {
     max-height: 500px;
 }
+
+/* Console en temps réel */
+.orders-realtime {
+    margin-top: 24px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.realtime-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: #ef4444;
+    border-radius: 50%;
+    animation: pulse-live 2s infinite;
+}
+
+@keyframes pulse-live {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.2);
+    }
+}
+
+.orders-console {
+    background: #1a1a1a;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #333;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.console-header {
+    background: #2d2d2d;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #333;
+}
+
+.console-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.control-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.control-dot:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 8px currentColor;
+}
+
+.control-dot.red {
+    background: #ff5f57;
+}
+
+.control-dot.yellow {
+    background: #ffbd2e;
+}
+
+.control-dot.green {
+    background: #28ca42;
+}
+
+.console-title {
+    color: #e5e5e5;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.console-content {
+    padding: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    scrollbar-width: thin;
+    scrollbar-color: #444 #1a1a1a;
+}
+
+.console-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.console-content::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.console-content::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 3px;
+}
+
+.console-content::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.console-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 8px;
+    padding: 4px 0;
+    animation: fade-in-console 0.3s ease;
+}
+
+@keyframes fade-in-console {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.console-line.welcome {
+    color: #00d4ff;
+}
+
+.console-line.info {
+    color: #a8a8a8;
+}
+
+.console-line.success {
+    color: #00ff88;
+}
+
+.console-line.warning {
+    color: #ffaa00;
+}
+
+.console-line.error {
+    color: #ff4757;
+}
+
+.console-line.webhook {
+    color: #9c88ff;
+}
+
+.console-line.processing {
+    color: #ffa726;
+}
+
+.console-line .timestamp {
+    font-size: 16px;
+    flex-shrink: 0;
+    width: 24px;
+}
+
+.console-line .message {
+    flex: 1;
+    word-break: break-word;
+}
+
+.console-line .details {
+    color: #666;
+    font-size: 12px;
+    margin-left: 36px;
+    margin-top: 2px;
+}

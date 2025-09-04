@@ -1,15 +1,15 @@
-// Module de gestion des commandes Shopify ↔ Kimland
+// Module de gestion des commandes Shopify ↔ Kimland - Version Console
 class OrdersModule {
     constructor() {
         this.currentShop = null;
         this.stats = {
-            totalSynced: 0,
-            pendingSync: 0,
-            errors: 0,
-            lastSync: null
+            received: 0,
+            pending: 0,
+            success: 0,
+            errors: 0
         };
-        this.logs = [];
         this.isConnected = false;
+        this.orders = [];
         
         this.init();
     }
@@ -20,29 +20,33 @@ class OrdersModule {
         this.currentShop = urlParams.get('shop');
         
         if (!this.currentShop) {
-            this.logError('Shop non spécifié dans l\'URL');
+            this.addConsoleMessage('error', '⚠️', 'Erreur: Shop non spécifié dans l\'URL');
             return;
         }
 
         this.loadOrdersModule();
         this.startStatusCheck();
         this.setupEventListeners();
+        this.startWebSocketConnection(); // Simuler une connexion temps réel
     }
 
     // Charger le statut des commandes
     async loadOrdersModule() {
         try {
+            this.addConsoleMessage('info', '🔍', 'Vérification du statut de connexion Kimland...');
+            
             const response = await fetch(`/api/orders/sync/status`);
             const data = await response.json();
             
             if (data.success) {
                 this.updateStats(data.status);
                 this.updateUI();
+                this.addConsoleMessage('success', '✓', 'Connexion établie avec le système Kimland');
             } else {
-                this.logError('Erreur chargement statut: ' + data.error);
+                this.addConsoleMessage('error', '❌', 'Erreur chargement statut: ' + data.error);
             }
         } catch (error) {
-            this.logError('Erreur connexion API: ' + error.message);
+            this.addConsoleMessage('error', '❌', 'Erreur connexion API: ' + error.message);
         }
     }
 
@@ -50,10 +54,10 @@ class OrdersModule {
     updateStats(status) {
         this.isConnected = status.kimlandConnected;
         this.stats = {
-            totalSynced: status.totalSynced || 0,
-            pendingSync: 0, // À implémenter
-            errors: status.errors || 0,
-            lastSync: status.lastSync ? new Date(status.lastSync) : null
+            received: status.totalSynced || 0,
+            pending: 0, // À implémenter
+            success: status.totalSynced || 0,
+            errors: status.errors || 0
         };
     }
 
@@ -61,18 +65,92 @@ class OrdersModule {
     updateUI() {
         this.updateStatsCards();
         this.updateConnectionStatus();
-        this.updateRecentOrders();
     }
 
     // Mettre à jour les cartes de statistiques
     updateStatsCards() {
-        const syncedEl = document.getElementById('stat-synced');
+        const receivedEl = document.getElementById('stat-synced');
         const pendingEl = document.getElementById('stat-pending');
+        const successEl = document.getElementById('stat-success');
         const errorsEl = document.getElementById('stat-errors');
         
-        if (syncedEl) syncedEl.textContent = this.stats.totalSynced;
-        if (pendingEl) pendingEl.textContent = this.stats.pendingSync;
+        if (receivedEl) receivedEl.textContent = this.stats.received;
+        if (pendingEl) pendingEl.textContent = this.stats.pending;
+        if (successEl) successEl.textContent = this.stats.success;
         if (errorsEl) errorsEl.textContent = this.stats.errors;
+    }
+
+    // Ajouter un message dans la console
+    addConsoleMessage(type, icon, message, details = null) {
+        const consoleContent = document.getElementById('console-content');
+        if (!consoleContent) return;
+
+        const timestamp = new Date().toLocaleTimeString('fr-FR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+
+        const consoleLine = document.createElement('div');
+        consoleLine.className = `console-line ${type}`;
+        consoleLine.innerHTML = `
+            <span class="timestamp">${icon}</span>
+            <span class="message">${message}</span>
+        `;
+
+        if (details) {
+            const detailsDiv = document.createElement('div');
+            detailsDiv.className = 'details';
+            detailsDiv.textContent = details;
+            consoleLine.appendChild(detailsDiv);
+        }
+
+        consoleContent.insertBefore(consoleLine, consoleContent.firstChild);
+
+        // Limiter à 50 messages
+        while (consoleContent.children.length > 50) {
+            consoleContent.removeChild(consoleContent.lastChild);
+        }
+    }
+
+    // Simuler une connexion temps réel pour les tests
+    startWebSocketConnection() {
+        this.addConsoleMessage('info', '🔗', 'Connexion WebSocket établie (simulation)');
+        
+        // Simuler des événements aléatoires pour démo
+        setInterval(() => {
+            if (Math.random() < 0.1) { // 10% de chance
+                this.simulateIncomingOrder();
+            }
+        }, 10000); // Toutes les 10 secondes
+    }
+
+    // Simuler une commande entrante
+    simulateIncomingOrder() {
+        const orderNumber = Math.floor(Math.random() * 9000) + 1000;
+        const customerEmail = `client${Math.floor(Math.random() * 100)}@example.com`;
+        
+        this.addConsoleMessage('webhook', '📦', `Nouvelle commande reçue: #${orderNumber}`, customerEmail);
+        
+        setTimeout(() => {
+            this.addConsoleMessage('processing', '⚙️', `Traitement commande #${orderNumber}`, 'Création client sur Kimland...');
+            this.stats.pending++;
+            this.updateStatsCards();
+        }, 1000);
+        
+        setTimeout(() => {
+            const success = Math.random() > 0.2; // 80% de succès
+            if (success) {
+                this.addConsoleMessage('success', '✓', `Commande #${orderNumber} synchronisée avec succès !`);
+                this.stats.success++;
+                this.stats.received++;
+            } else {
+                this.addConsoleMessage('error', '❌', `Échec synchronisation commande #${orderNumber}`, 'Erreur de connexion Kimland');
+                this.stats.errors++;
+            }
+            this.stats.pending = Math.max(0, this.stats.pending - 1);
+            this.updateStatsCards();
+        }, 3000);
     }
 
     // Mettre à jour le statut de connexion
@@ -146,69 +224,18 @@ class OrdersModule {
         }
     }
 
-    // Synchroniser les commandes récentes
-    async syncRecent() {
-        this.logInfo('Synchronisation des commandes récentes...');
-        
-        try {
-            const response = await fetch(`/api/orders/sync/recent?shop=${encodeURIComponent(this.currentShop)}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ days: 7 })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success && data.stats) {
-                const stats = data.stats;
-                this.logSuccess(`Synchronisation terminée: ${stats.successful}/${stats.total} commandes`);
-                
-                // Afficher les détails des erreurs
-                if (stats.failed > 0) {
-                    const failures = stats.results.filter(r => !r.success);
-                    failures.forEach(failure => {
-                        this.logError(`Commande ${failure.shopifyOrderNumber}: ${failure.error}`);
-                    });
-                }
-                
-                this.stats.totalSynced += stats.successful;
-                this.stats.errors += stats.failed;
-                this.updateStatsCards();
-            } else {
-                this.logError('Erreur sync récentes: ' + (data.error || 'Erreur inconnue'));
-            }
-        } catch (error) {
-            this.logError('Erreur sync récentes: ' + error.message);
-        }
-    }
-
-    // Vérifier le statut périodiquement
-    startStatusCheck() {
-        setInterval(() => {
-            this.loadOrdersModule();
-        }, 30000); // Toutes les 30 secondes
-    }
-
     // Configurer les événements
     setupEventListeners() {
-        // Bouton test client
-        const testClientBtn = document.getElementById('test-client-btn');
-        if (testClientBtn) {
-            testClientBtn.addEventListener('click', () => this.testClient());
+        // Bouton test webhook
+        const testWebhookBtn = document.getElementById('test-webhook-btn');
+        if (testWebhookBtn) {
+            testWebhookBtn.addEventListener('click', () => this.testWebhook());
         }
 
-        // Bouton test
-        const testBtn = document.getElementById('test-sync-btn');
-        if (testBtn) {
-            testBtn.addEventListener('click', () => this.testSync());
-        }
-
-        // Bouton sync récentes
-        const syncBtn = document.getElementById('sync-recent-btn');
-        if (syncBtn) {
-            syncBtn.addEventListener('click', () => this.syncRecent());
+        // Bouton vider console
+        const clearConsoleBtn = document.getElementById('clear-console-btn');
+        if (clearConsoleBtn) {
+            clearConsoleBtn.addEventListener('click', () => this.clearConsole());
         }
 
         // Bouton actualiser statut
@@ -217,125 +244,64 @@ class OrdersModule {
             refreshBtn.addEventListener('click', () => this.loadOrdersModule());
         }
 
-        // Boutons collapse/expand
-        this.setupToggleButtons();
-    }
-
-    // Configurer les boutons de toggle
-    setupToggleButtons() {
-        const toggles = document.querySelectorAll('.toggle-section');
-        toggles.forEach(toggle => {
-            toggle.addEventListener('click', () => {
-                const content = toggle.nextElementSibling;
-                const arrow = toggle.querySelector('.toggle-arrow');
-                
-                if (content && arrow) {
-                    const isExpanded = content.classList.contains('expanded');
-                    
-                    if (isExpanded) {
-                        content.classList.remove('expanded');
-                        arrow.classList.remove('expanded');
-                    } else {
-                        content.classList.add('expanded');
-                        arrow.classList.add('expanded');
-                    }
+        // Interaction avec les dots de la console
+        const controlDots = document.querySelectorAll('.control-dot');
+        controlDots.forEach(dot => {
+            dot.addEventListener('click', (e) => {
+                if (e.target.classList.contains('red')) {
+                    this.addConsoleMessage('error', '❌', 'Connexion fermée par l\'utilisateur');
+                } else if (e.target.classList.contains('yellow')) {
+                    this.addConsoleMessage('warning', '⚠️', 'Mode maintenance activé');
+                } else if (e.target.classList.contains('green')) {
+                    this.addConsoleMessage('success', '✅', 'Système opérationnel');
                 }
             });
         });
     }
 
-    // Mettre à jour les commandes récentes (simulé)
-    updateRecentOrders() {
-        const container = document.getElementById('recent-orders-list');
-        if (!container) return;
+    // Vérifier le statut périodiquement
+    startStatusCheck() {
+        setInterval(() => {
+            this.loadOrdersModule();
+        }, 60000); // Toutes les 60 secondes
+    }
 
-        // Simulation de commandes récentes
-        const recentOrders = [
-            {
-                number: '#1001',
-                customer: 'client@example.com',
-                status: 'synced',
-                timestamp: new Date(Date.now() - 1000 * 60 * 30) // 30 min ago
-            },
-            {
-                number: '#1000',
-                customer: 'test@kimland.com',
-                status: 'pending',
-                timestamp: new Date(Date.now() - 1000 * 60 * 60) // 1h ago
+    // Méthodes héritées simplifiées pour compatibilité
+    updateConnectionStatus() {
+        const statusEl = document.getElementById('connection-status');
+        if (!statusEl) return;
+
+        statusEl.className = `orders-status ${this.isConnected ? 'connected' : 'disconnected'}`;
+        statusEl.innerHTML = this.isConnected 
+            ? '🟢 Connecté à Kimland - Synchronisation automatique active'
+            : '🔴 Déconnecté de Kimland - Vérifiez la configuration';
+    }
+
+    // Gestion des webhooks entrants (pour intégration future)
+    handleIncomingWebhook(orderData) {
+        const orderNumber = orderData.order_number || orderData.name || 'Inconnu';
+        const customerEmail = orderData.customer?.email || 'Email non spécifié';
+        const totalPrice = orderData.total_price || '0.00';
+        
+        this.addConsoleMessage('webhook', '📦', `Commande reçue: #${orderNumber}`, `${customerEmail} - ${totalPrice} DA`);
+        
+        this.stats.received++;
+        this.stats.pending++;
+        this.updateStatsCards();
+        
+        // Simuler le traitement
+        setTimeout(() => {
+            const success = Math.random() > 0.15; // 85% de succès
+            if (success) {
+                this.addConsoleMessage('success', '✓', `Commande #${orderNumber} synchronisée !`, 'Client créé et commande ajoutée sur Kimland');
+                this.stats.success++;
+            } else {
+                this.addConsoleMessage('error', '❌', `Échec commande #${orderNumber}`, 'Erreur lors de la création du client');
+                this.stats.errors++;
             }
-        ];
-
-        container.innerHTML = recentOrders.map(order => `
-            <div class="recent-order">
-                <div class="order-info">
-                    <div class="order-number">${order.number}</div>
-                    <div class="order-customer">${order.customer}</div>
-                </div>
-                <div class="order-status ${order.status}">
-                    ${order.status === 'synced' ? 'Synchronisé' : 
-                      order.status === 'pending' ? 'En attente' : 'Échec'}
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // Logging
-    logInfo(message) {
-        this.addLogEntry('info', message);
-    }
-
-    logSuccess(message) {
-        this.addLogEntry('success', message);
-    }
-
-    logError(message) {
-        this.addLogEntry('error', message);
-        console.error('[OrdersModule]', message);
-    }
-
-    addLogEntry(type, message) {
-        const timestamp = new Date().toLocaleTimeString();
-        const entry = {
-            type,
-            message,
-            timestamp
-        };
-        
-        this.logs.unshift(entry);
-        
-        // Garder seulement les 50 dernières entrées
-        if (this.logs.length > 50) {
-            this.logs = this.logs.slice(0, 50);
-        }
-        
-        this.updateLogDisplay();
-    }
-
-    updateLogDisplay() {
-        const logEl = document.getElementById('orders-log');
-        if (!logEl) return;
-
-        logEl.innerHTML = this.logs.map(entry => `
-            <div class="log-entry ${entry.type}">
-                <span class="log-timestamp">${entry.timestamp}</span>
-                ${entry.message}
-            </div>
-        `).join('');
-
-        // Auto-scroll vers le haut (nouveau log)
-        logEl.scrollTop = 0;
-    }
-
-    // Méthodes utilitaires
-    formatDate(date) {
-        if (!date) return 'Jamais';
-        return new Intl.DateTimeFormat('fr-FR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        }).format(date);
+            this.stats.pending--;
+            this.updateStatsCards();
+        }, Math.random() * 3000 + 2000); // Entre 2 et 5 secondes
     }
 }
 

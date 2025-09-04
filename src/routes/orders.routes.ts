@@ -7,6 +7,44 @@ import { asyncHandler } from '../middleware/error.middleware';
 const router = Router();
 
 /**
+ * Obtenir les dernières commandes pour l'interface temps réel
+ */
+router.get('/recent', asyncHandler(async (req: Request, res: Response) => {
+  const { limit = 10 } = req.query;
+  
+  try {
+    // Simuler des commandes récentes (en attente de l'implémentation BDD)
+    const mockOrders = [];
+    
+    for (let i = 0; i < Math.min(parseInt(limit as string), 10); i++) {
+      mockOrders.push({
+        id: `ORDER_${Date.now()}_${i}`,
+        orderNumber: Math.floor(Math.random() * 9000) + 1000,
+        customerEmail: `client${i}@example.com`,
+        totalPrice: (Math.random() * 200 + 20).toFixed(2),
+        status: ['pending', 'success', 'error'][Math.floor(Math.random() * 3)],
+        createdAt: new Date(Date.now() - Math.random() * 86400000).toISOString()
+      });
+    }
+    
+    res.json({
+      success: true,
+      orders: mockOrders
+    });
+    
+  } catch (error) {
+    logger.error('❌ Erreur récupération commandes récentes', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur inconnue'
+    });
+  }
+}));
+
+/**
  * Tester la création d'un client Kimland avec des données de test
  */
 router.post('/test/create-client', asyncHandler(async (req: Request, res: Response) => {
@@ -79,7 +117,8 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
   logger.info('📥 Webhook reçu - Nouvelle commande Shopify', {
     orderId: orderData.id,
     orderNumber: orderData.order_number,
-    customerEmail: orderData.customer?.email
+    customerEmail: orderData.customer?.email,
+    totalPrice: orderData.total_price
   });
 
   try {
@@ -95,7 +134,9 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
       res.status(200).json({
         success: true,
         message: 'Commande synchronisée avec Kimland',
-        kimlandOrderId: syncResult.kimlandOrderId
+        kimlandOrderId: syncResult.kimlandOrderId,
+        orderNumber: orderData.order_number,
+        customerEmail: orderData.customer?.email
       });
     } else {
       logger.warn('⚠️ Échec synchronisation commande webhook', {
@@ -107,7 +148,8 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
       res.status(200).json({
         success: false,
         message: syncResult.error,
-        shopifyOrderId: syncResult.shopifyOrderId
+        shopifyOrderId: syncResult.shopifyOrderId,
+        orderNumber: orderData.order_number
       });
     }
     
@@ -121,7 +163,8 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
     res.status(200).json({
       success: false,
       message: 'Erreur de traitement',
-      error: error instanceof Error ? error.message : 'Erreur inconnue'
+      error: error instanceof Error ? error.message : 'Erreur inconnue',
+      orderNumber: orderData.order_number
     });
   }
 }));

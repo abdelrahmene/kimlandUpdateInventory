@@ -237,67 +237,68 @@
                     <div class="orders-stats">
                         <div class="stat-card">
                             <div id="stat-synced" class="stat-value">0</div>
-                            <div class="stat-label">Commandes synchronisées</div>
+                            <div class="stat-label">Commandes reçues</div>
                         </div>
                         <div class="stat-card">
                             <div id="stat-pending" class="stat-value">0</div>
-                            <div class="stat-label">En attente</div>
+                            <div class="stat-label">En cours de traitement</div>
+                        </div>
+                        <div class="stat-card">
+                            <div id="stat-success" class="stat-value">0</div>
+                            <div class="stat-label">Synchronisées avec succès</div>
                         </div>
                         <div class="stat-card">
                             <div id="stat-errors" class="stat-value">0</div>
                             <div class="stat-label">Erreurs</div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-value">⚡</div>
-                            <div class="stat-label">Temps réel</div>
+                    </div>
+
+                    <!-- Commandes en temps réel -->
+                    <div class="orders-realtime">
+                        <div class="realtime-header">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">📦 Commandes en temps réel</h3>
+                            <div class="live-indicator">
+                                <span class="live-dot"></span>
+                                <span class="text-sm text-gray-600">En direct</span>
+                            </div>
+                        </div>
+                        
+                        <div id="orders-console" class="orders-console">
+                            <div class="console-header">
+                                <div class="console-controls">
+                                    <div class="control-dot red"></div>
+                                    <div class="control-dot yellow"></div>
+                                    <div class="control-dot green"></div>
+                                </div>
+                                <div class="console-title">Kimland Sync Console</div>
+                            </div>
+                            <div id="console-content" class="console-content">
+                                <div class="console-line welcome">
+                                    <span class="timestamp">🚀</span>
+                                    <span class="message">Système de synchronisation Shopify → Kimland initialisé</span>
+                                </div>
+                                <div class="console-line info">
+                                    <span class="timestamp">📡</span>
+                                    <span class="message">En attente des commandes Shopify...</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Contrôles -->
                     <div class="orders-controls">
-                        <button id="test-client-btn" class="control-btn">
-                            <span>👤</span>
-                            Tester création client
+                        <button id="test-webhook-btn" class="control-btn">
+                            <span>📡</span>
+                            Tester Webhook
                         </button>
-                        <button id="test-sync-btn" class="control-btn">
-                            <span>🧪</span>
-                            Tester la synchronisation
-                        </button>
-                        <button id="sync-recent-btn" class="control-btn success">
-                            <span>🔄</span>
-                            Sync commandes récentes
+                        <button id="clear-console-btn" class="control-btn secondary">
+                            <span>🧹</span>
+                            Vider console
                         </button>
                         <button id="refresh-status-btn" class="control-btn secondary">
                             <span>♻️</span>
                             Actualiser statut
                         </button>
-                    </div>
-
-                    <!-- Section logs -->
-                    <div class="toggle-section" data-target="logs">
-                        <span class="toggle-arrow">▶</span>
-                        <span>Logs de synchronisation</span>
-                    </div>
-                    <div class="collapsible-content" id="logs-content">
-                        <div id="orders-log" class="orders-log">
-                            <div class="log-entry info">
-                                <span class="log-timestamp">00:00:00</span>
-                                Module de commandes initialisé
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Commandes récentes -->
-                    <div class="toggle-section" data-target="recent">
-                        <span class="toggle-arrow">▶</span>
-                        <span>Commandes récentes</span>
-                    </div>
-                    <div class="collapsible-content" id="recent-content">
-                        <div class="orders-recent">
-                            <div id="recent-orders-list">
-                                <!-- Les commandes récentes seront chargées ici -->
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>

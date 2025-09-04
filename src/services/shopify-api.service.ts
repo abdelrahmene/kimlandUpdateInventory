@@ -676,6 +676,85 @@ export class ShopifyApiService {
   }
 
   /**
+   * Récupère une commande spécifique
+   */
+  public async getOrder(shop: string, orderId: string, accessToken?: string): Promise<any | null> {
+    // Si pas d'accessToken fourni, on assume que c'est un appel interne
+    if (!accessToken) {
+      logger.warn('getOrder appelé sans accessToken', { shop, orderId });
+      return null;
+    }
+
+    const url = UrlUtils.buildApiUrl(shop, `orders/${orderId}.json`);
+    
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+      
+      return response.data?.order || null;
+    } catch (error: any) {
+      logger.error('Erreur getOrder', { shop, orderId, error: error.message });
+      return null;
+    }
+  }
+
+  /**
+   * Récupère les commandes avec options de filtrage
+   */
+  public async getOrders(shop: string, options: {
+    status?: string;
+    created_at_min?: string;
+    created_at_max?: string;
+    limit?: number;
+    page?: number;
+  } = {}, accessToken?: string): Promise<any[]> {
+    // Si pas d'accessToken fourni, on assume que c'est un appel interne
+    if (!accessToken) {
+      logger.warn('getOrders appelé sans accessToken', { shop, options });
+      return [];
+    }
+
+    const { status = 'any', limit = 50, page = 1, ...otherOptions } = options;
+    
+    const params = new URLSearchParams({
+      status,
+      limit: limit.toString(),
+      page: page.toString(),
+      ...Object.fromEntries(
+        Object.entries(otherOptions).filter(([_, value]) => value !== undefined)
+      )
+    });
+
+    const url = UrlUtils.buildApiUrl(shop, `orders.json?${params.toString()}`);
+    
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      });
+      
+      logger.info('Commandes récupérées', { 
+        shop, 
+        count: response.data?.orders?.length || 0,
+        options 
+      });
+      
+      return response.data?.orders || [];
+    } catch (error: any) {
+      logger.error('Erreur getOrders', { shop, options, error: error.message });
+      return [];
+    }
+  }
+
+  /**
    * Traite un produit Shopify en produit avec référence extraite
    */
   public processProduct(product: ShopifyProduct): ProcessedProduct {

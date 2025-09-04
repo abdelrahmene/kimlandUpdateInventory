@@ -9,6 +9,8 @@ import { debugRoutes } from './routes/debug.routes';
 import { syncRoutes } from './routes/sync.routes';
 import { kimlandRoutes } from './routes/kimland.routes';
 import { adminRoutes } from './routes/admin.routes';
+import { ordersRoutes } from './routes/orders.routes';
+import { webhooksRoutes } from './routes/webhooks.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { logger } from './utils/logger';
 import { firebaseService } from './services/firebase.service';
@@ -60,6 +62,8 @@ app.use('/auth', authRoutes);
 app.use('/api', apiRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/kimland', kimlandRoutes);
+app.use('/api/orders', ordersRoutes); // 🛒 Routes de gestion des commandes
+app.use('/webhooks', webhooksRoutes); // 📡 Webhooks obligatoires Shopify
 app.use('/admin', adminRoutes); // 🔧 Routes d'administration
 app.use('/debug', debugRoutes);
 

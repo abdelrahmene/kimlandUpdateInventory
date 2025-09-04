@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kimland Sync</title>
+    <title>Kimland Sync - Dashboard Complet</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="/assets/css/orders-module.css" rel="stylesheet">
     <style>
         * {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -210,8 +211,95 @@
         <div id="dashboard" class="hidden">
             <!-- Header -->
             <div class="text-center pt-16 pb-12">
-                <h1 class="text-4xl font-light text-gray-900 mb-3 tracking-tight">Kimland Sync</h1>
-                <p class="text-lg text-gray-600 font-light">Synchronisation intelligente Shopify ↔ Kimland</p>
+                <h1 class="text-4xl font-light text-gray-900 mb-3 tracking-tight">Kimland Sync Pro</h1>
+                <p class="text-lg text-gray-600 font-light">Synchronisation intelligente Shopify ↔ Kimland + Gestion des commandes</p>
+            </div>
+
+            <!-- Module de gestion des commandes -->
+            <div id="orders-module" class="max-w-6xl mx-auto px-6 mb-16">
+                <div class="orders-module">
+                    <div class="orders-header">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-gray-900 mb-2">🛒 Gestion des Commandes</h2>
+                            <p class="text-gray-600">Synchronisation automatique des commandes Shopify vers Kimland</p>
+                        </div>
+                        <div class="webhook-indicator">
+                            Webhook actif
+                        </div>
+                    </div>
+
+                    <!-- Statut de connexion -->
+                    <div id="connection-status" class="orders-status disconnected">
+                        🔄 Vérification de la connexion Kimland...
+                    </div>
+
+                    <!-- Statistiques -->
+                    <div class="orders-stats">
+                        <div class="stat-card">
+                            <div id="stat-synced" class="stat-value">0</div>
+                            <div class="stat-label">Commandes synchronisées</div>
+                        </div>
+                        <div class="stat-card">
+                            <div id="stat-pending" class="stat-value">0</div>
+                            <div class="stat-label">En attente</div>
+                        </div>
+                        <div class="stat-card">
+                            <div id="stat-errors" class="stat-value">0</div>
+                            <div class="stat-label">Erreurs</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">⚡</div>
+                            <div class="stat-label">Temps réel</div>
+                        </div>
+                    </div>
+
+                    <!-- Contrôles -->
+                    <div class="orders-controls">
+                        <button id="test-client-btn" class="control-btn">
+                            <span>👤</span>
+                            Tester création client
+                        </button>
+                        <button id="test-sync-btn" class="control-btn">
+                            <span>🧪</span>
+                            Tester la synchronisation
+                        </button>
+                        <button id="sync-recent-btn" class="control-btn success">
+                            <span>🔄</span>
+                            Sync commandes récentes
+                        </button>
+                        <button id="refresh-status-btn" class="control-btn secondary">
+                            <span>♻️</span>
+                            Actualiser statut
+                        </button>
+                    </div>
+
+                    <!-- Section logs -->
+                    <div class="toggle-section" data-target="logs">
+                        <span class="toggle-arrow">▶</span>
+                        <span>Logs de synchronisation</span>
+                    </div>
+                    <div class="collapsible-content" id="logs-content">
+                        <div id="orders-log" class="orders-log">
+                            <div class="log-entry info">
+                                <span class="log-timestamp">00:00:00</span>
+                                Module de commandes initialisé
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Commandes récentes -->
+                    <div class="toggle-section" data-target="recent">
+                        <span class="toggle-arrow">▶</span>
+                        <span>Commandes récentes</span>
+                    </div>
+                    <div class="collapsible-content" id="recent-content">
+                        <div class="orders-recent">
+                            <div id="recent-orders-list">
+                                <!-- Les commandes récentes seront chargées ici -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Main Search Section -->
@@ -709,5 +797,8 @@
             } 
         }
     </script>
+    
+    <!-- Script du module de commandes -->
+    <script src="/assets/js/orders-module.js"></script>
 </body>
 </html>

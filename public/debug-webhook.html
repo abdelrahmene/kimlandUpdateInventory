@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>🧪 Test Debug Webhook Kimland</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .log { 
+            background: #f8f9fa; 
+            padding: 12px; 
+            margin: 8px 0; 
+            border-radius: 5px; 
+            border-left: 4px solid #6c757d;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .log.success { 
+            background: #d4edda; 
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        .log.error { 
+            background: #f8d7da; 
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        .log.info {
+            background: #d1ecf1;
+            border-left-color: #17a2b8;
+            color: #0c5460;
+        }
+        button { 
+            padding: 12px 24px; 
+            margin: 8px 5px; 
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        #logs {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Debug Webhook Kimland</h1>
+        
+        <div id="sse-status" class="status disconnected">
+            🔴 SSE Déconnecté
+        </div>
+        
+        <div>
+            <button class="btn-success" onclick="connectSSE()">🔗 Connecter SSE</button>
+            <button class="btn-primary" onclick="testWebhook()">📡 Tester Webhook</button>
+            <button class="btn-secondary" onclick="clearLogs()">🧹 Vider logs</button>
+        </div>
+        
+        <h2>📋 Logs de Debug</h2>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        
+        function log(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `<strong>[${new Date().toLocaleTimeString()}]</strong> ${message}`;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        function updateSSEStatus(connected) {
+            const status = document.getElementById('sse-status');
+            if (connected) {
+                status.className = 'status connected';
+                status.innerHTML = '🟢 SSE Connecté';
+            } else {
+                status.className = 'status disconnected';
+                status.innerHTML = '🔴 SSE Déconnecté';
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+            log('🧹 Logs vidés', 'info');
+        }
+        
+        function connectSSE() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            log('🔗 Tentative de connexion au SSE...', 'info');
+            updateSSEStatus(false);
+            
+            eventSource = new EventSource('/api/logs/stream');
+            
+            eventSource.onopen = () => {
+                log('✅ SSE connecté avec succès !', 'success');
+                updateSSEStatus(true);
+            };
+            
+            eventSource.onmessage = (event) => {
+                log(`📨 SSE Message reçu: ${event.data}`, 'info');
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'webhook') {
+                        log(`🛒 WEBHOOK DÉTECTÉ ! Commande #${data.data?.orderNumber || 'N/A'} - Client: ${data.data?.customerName || 'N/A'}`, 'success');
+                    } else if (data.type === 'connected') {
+                        log('✅ Message de bienvenue SSE reçu', 'success');
+                    }
+                } catch (e) {
+                    log('⚠️ Erreur parsing SSE message: ' + e.message, 'error');
+                }
+            };
+            
+            eventSource.onerror = (error) => {
+                log('❌ Erreur SSE: ' + error, 'error');
+                updateSSEStatus(false);
+            };
+        }
+        
+        async function testWebhook() {
+            log('🧪 Test webhook démarré...', 'info');
+            
+            const testData = {
+                id: 'TEST_DEBUG_' + Date.now(),
+                order_number: Math.floor(Math.random() * 9000) + 1000,
+                customer: {
+                    email: 'test@debug.kimland.com',
+                    first_name: 'Test',
+                    last_name: 'Debug'
+                },
+                shipping_address: {
+                    first_name: 'Test',
+                    last_name: 'Debug',
+                    address1: '123 Rue du Test',
+                    city: 'Alger'
+                },
+                line_items: [{
+                    id: 1,
+                    name: 'Produit Test Debug',
+                    quantity: 1,
+                    price: '99.99',
+                    sku: 'TEST-DEBUG-001'
+                }],
+                total_price: '99.99',
+                financial_status: 'paid',
+                created_at: new Date().toISOString()
+            };
+            
+            log('📦 Données de test préparées: ' + JSON.stringify(testData, null, 2), 'info');
+            
+            try {
+                log('📡 Envoi de la requête webhook...', 'info');
+                
+                const response = await fetch('/api/orders/webhook/orders/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(testData)
+                });
+                
+                log(`📡 Réponse reçue - Status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                
+                const result = await response.json();
+                log('📋 Réponse JSON: ' + JSON.stringify(result, null, 2), response.ok ? 'success' : 'error');
+                
+                if (response.ok) {
+                    log('✅ Test webhook terminé avec succès ! Vérifiez si la commande apparaît dans le dashboard.', 'success');
+                } else {
+                    log('❌ Test webhook échoué. Vérifiez les logs serveur.', 'error');
+                }
+                
+            } catch (error) {
+                log('❌ Erreur lors du test webhook: ' + error.message, 'error');
+            }
+        }
+        
+        // Auto-connect SSE au chargement
+        window.addEventListener('load', () => {
+            log('🚀 Page chargée, connexion automatique SSE...', 'info');
+            connectSSE();
+        });
+    </script>
+</body>
+</html>

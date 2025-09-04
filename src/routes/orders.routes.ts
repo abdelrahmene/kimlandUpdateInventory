@@ -115,6 +115,8 @@ router.post('/test/create-client', asyncHandler(async (req: Request, res: Respon
 router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Response) => {
   const orderData = req.body;
   
+  console.log('🔍 [DEBUG WEBHOOK] Données brutes reçues:', JSON.stringify(orderData, null, 2));
+  
   const orderInfo = {
     orderId: orderData.id,
     orderNumber: orderData.order_number,
@@ -125,10 +127,11 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
     itemsCount: orderData.line_items?.length || 0
   };
   
+  console.log('📋 [DEBUG WEBHOOK] Informations extraites:', orderInfo);
   logger.info('📥 Webhook reçu - Nouvelle commande Shopify', orderInfo);
   
   // 📺 Diffuser en temps réel vers l'interface
-  broadcastToClients({
+  const broadcastData = {
     type: 'webhook',
     icon: '📦',
     message: `Commande #${orderInfo.orderNumber} reçue`,
@@ -143,7 +146,11 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
       needsProcessing: orderInfo.financialStatus === 'paid'
     },
     timestamp: new Date().toISOString()
-  });
+  };
+  
+  console.log('📡 [DEBUG WEBHOOK] Diffusion SSE:', broadcastData);
+  broadcastToClients(broadcastData);
+  console.log('✅ [DEBUG WEBHOOK] Diffusion SSE envoyée');
 
   try {
     // Vérifier si la commande est payante

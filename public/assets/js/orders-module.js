@@ -45,26 +45,72 @@ class OrdersModule {
 
     // Connexion temps réel pour les nouvelles commandes
     connectToRealTimeOrders() {
+        console.log('🔗 [DEBUG] Tentative de connexion EventSource...');
+        
         const eventSource = new EventSource('/api/logs/stream');
         
+        eventSource.onopen = () => {
+            console.log('✅ [DEBUG] EventSource connecté avec succès');
+            console.log('🔍 [DEBUG] EventSource URL:', eventSource.url);
+            console.log('🔍 [DEBUG] EventSource readyState:', eventSource.readyState);
+        };
+        
         eventSource.onmessage = (event) => {
+            console.log('📨 [DEBUG] Message EventSource reçu:', event.data);
+            console.log('📨 [DEBUG] Event type:', event.type);
+            console.log('📨 [DEBUG] Event lastEventId:', event.lastEventId);
+            
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'webhook' && data.data) {
-                    this.addNewOrder(data.data);
+                console.log('📄 [DEBUG] Données parsées:', data);
+                console.log('📄 [DEBUG] Type de message:', data.type);
+                console.log('📄 [DEBUG] A des données:', !!data.data);
+                
+                if (data.type === 'webhook') {
+                    console.log('🛒 [DEBUG] WEBHOOK DÉTECTÉ ! Données complètes:', data);
+                    if (data.data) {
+                        console.log('🛒 [DEBUG] Appel addNewOrder avec:', data.data);
+                        this.addNewOrder(data.data);
+                    } else {
+                        console.warn('⚠️ [DEBUG] Webhook sans données ! Data complet:', data);
+                    }
+                } else if (data.type === 'connected') {
+                    console.log('🔗 [DEBUG] Message de connexion SSE');
+                } else {
+                    console.log('ℹ️ [DEBUG] Message ignoré - Type:', data.type, 'Data:', !!data.data);
                 }
             } catch (error) {
-                console.error('Erreur parsing message:', error);
+                console.error('❌ [DEBUG] Erreur parsing message EventSource:', error);
+                console.error('❌ [DEBUG] Raw data:', event.data);
             }
         };
         
         eventSource.onerror = (error) => {
-            console.error('Erreur EventSource:', error);
+            console.error('❌ [DEBUG] Erreur EventSource:', error);
+            console.log('🔄 [DEBUG] EventSource readyState:', eventSource.readyState);
+            console.log('🔄 [DEBUG] EventSource CONNECTING:', eventSource.CONNECTING);
+            console.log('🔄 [DEBUG] EventSource OPEN:', eventSource.OPEN);
+            console.log('🔄 [DEBUG] EventSource CLOSED:', eventSource.CLOSED);
         };
+        
+        // Test de connexion après 2 secondes
+        setTimeout(() => {
+            console.log('🔍 [DEBUG] Vérification état EventSource après 2s:');
+            console.log('  - ReadyState:', eventSource.readyState);
+            console.log('  - URL:', eventSource.url);
+            console.log('  - WithCredentials:', eventSource.withCredentials);
+        }, 2000);
+        
+        // Stocker la référence pour debugging
+        window.debugEventSource = eventSource;
     }
 
     // Ajouter une nouvelle commande à l'interface
     addNewOrder(orderData) {
+        console.log('🔄 [DEBUG] addNewOrder APPELÉ ! Données reçues:', orderData);
+        console.log('🔄 [DEBUG] Type des données:', typeof orderData);
+        console.log('🔄 [DEBUG] Propriétés disponibles:', Object.keys(orderData));
+        
         // Créer l'objet commande
         const order = {
             id: Date.now(),
@@ -77,40 +123,96 @@ class OrdersModule {
             timestamp: new Date(),
             synced: false
         };
+        
+        console.log('📋 [DEBUG] Objet commande créé:', order);
+        console.log('📋 [DEBUG] Avant ajout - Nombre de commandes:', this.orders.length);
 
         // Ajouter au début de la liste
         this.orders.unshift(order);
+        console.log('📈 [DEBUG] Après ajout - Nombre de commandes:', this.orders.length);
+        console.log('📈 [DEBUG] Première commande:', this.orders[0]);
         
         // Limiter à 50 commandes
         if (this.orders.length > 50) {
             this.orders = this.orders.slice(0, 50);
+            console.log('📏 [DEBUG] Liste limitée à 50 commandes');
         }
 
         // Mettre à jour les stats
         this.stats.received++;
         if (order.financialStatus === 'pending') {
             this.stats.pending++;
+        } else if (order.financialStatus === 'paid') {
+            this.stats.success++;
         }
         
+        console.log('📉 [DEBUG] Stats mises à jour:', this.stats);
+        console.log('🎯 [DEBUG] Appel updateUI...');
         this.updateUI();
+        console.log('🎯 [DEBUG] Appel renderOrders...');
         this.renderOrders();
+        console.log('✅ [DEBUG] Interface mise à jour terminée');
+        
+        // Animation visuelle pour signaler la nouvelle commande
+        const ordersList = document.getElementById('orders-list');
+        if (ordersList) {
+            ordersList.style.border = '2px solid #10b981';
+            setTimeout(() => {
+                ordersList.style.border = '1px solid rgba(0, 0, 0, 0.05)';
+            }, 2000);
+        }
     }
 
     // Afficher les commandes
     renderOrders() {
+        console.log('🎨 [DEBUG] === RENDERORDERS APPELÉ ===');
+        console.log('🎨 [DEBUG] Nombre de commandes à afficher:', this.orders.length);
+        console.log('🎨 [DEBUG] Liste des commandes:', this.orders);
+        
         const ordersList = document.getElementById('orders-list');
-        if (!ordersList) return;
+        if (!ordersList) {
+            console.error('❌ [DEBUG] Element orders-list INTROUVABLE dans le DOM !');
+            console.error('❌ [DEBUG] Éléments avec ID trouvés:', 
+                Array.from(document.querySelectorAll('[id]')).map(el => el.id));
+            return;
+        }
+        
+        console.log('📋 [DEBUG] Element orders-list trouvé:', ordersList);
+        console.log('📋 [DEBUG] Position dans le DOM:', ordersList.getBoundingClientRect());
+        console.log('📋 [DEBUG] Contenu HTML actuel:', ordersList.innerHTML);
 
         if (this.orders.length === 0) {
-            ordersList.innerHTML = `
+            console.log('🚫 [DEBUG] Aucune commande, affichage empty state');
+            const emptyHTML = `
                 <div class="empty-state">
                     <span class="text-gray-500">⏳ En attente des commandes Shopify...</span>
                 </div>
             `;
+            ordersList.innerHTML = emptyHTML;
+            console.log('🚫 [DEBUG] Empty state injecté:', emptyHTML);
             return;
         }
 
-        ordersList.innerHTML = this.orders.map(order => this.renderOrderItem(order)).join('');
+        console.log('📏 [DEBUG] Génération HTML pour', this.orders.length, 'commandes...');
+        let html = '';
+        this.orders.forEach((order, index) => {
+            console.log(`📝 [DEBUG] Génération commande ${index + 1}:`, order);
+            const orderHtml = this.renderOrderItem(order);
+            html += orderHtml;
+        });
+        
+        console.log('📜 [DEBUG] HTML complet généré (longueur):', html.length);
+        console.log('📜 [DEBUG] HTML complet:', html);
+        
+        ordersList.innerHTML = html;
+        console.log('✅ [DEBUG] HTML injecté dans orders-list');
+        console.log('✅ [DEBUG] Nouveau contenu orders-list:', ordersList.innerHTML);
+        
+        // Forcer un repaint
+        ordersList.style.display = 'none';
+        ordersList.offsetHeight; // Force reflow
+        ordersList.style.display = '';
+        console.log('✅ [DEBUG] Repaint forcé');
     }
 
     // Afficher une commande individuelle
@@ -218,9 +320,12 @@ class OrdersModule {
 
     // Tester le webhook
     async testWebhook() {
+        console.log('🧪 [DEBUG] Test webhook démarré...');
+        
         const testOrderData = {
             id: 'TEST_' + Date.now(),
             order_number: Math.floor(Math.random() * 9000) + 1000,
+            test: false, // Forcer le traitement même si c'est un test
             customer: {
                 email: 'test@webhook.com',
                 first_name: 'Test',
@@ -231,16 +336,23 @@ class OrdersModule {
                 last_name: 'Client'
             },
             line_items: [{
+                id: 1,
+                product_id: 123,
+                variant_id: 456,
+                sku: 'TEST-SKU-001',
                 name: 'Produit Test',
                 quantity: 1,
-                price: '99.99'
+                price: '29.99'
             }],
-            total_price: '99.99',
+            total_price: '29.99',
             financial_status: 'paid',
             created_at: new Date().toISOString()
         };
 
+        console.log('🧪 [DEBUG] Données de test:', testOrderData);
+
         try {
+            console.log('📡 [DEBUG] Envoi de la requête webhook...');
             const response = await fetch('/api/orders/webhook/orders/create', {
                 method: 'POST',
                 headers: {
@@ -249,12 +361,15 @@ class OrdersModule {
                 body: JSON.stringify(testOrderData)
             });
             
+            console.log('📡 [DEBUG] Réponse reçue - Status:', response.status);
             const result = await response.json();
-            this.showNotification('Test webhook envoyé !', 'success');
+            console.log('📡 [DEBUG] Réponse JSON:', result);
+            
+            this.showNotification('Test webhook envoyé ! Vérifiez la console pour les détails.', 'success');
             
         } catch (error) {
-            console.error('Erreur test webhook:', error);
-            this.showNotification('Erreur test webhook', 'error');
+            console.error('❌ [DEBUG] Erreur test webhook:', error);
+            this.showNotification('Erreur test webhook: ' + error.message, 'error');
         }
     }
 
@@ -272,6 +387,8 @@ class OrdersModule {
 
     // Mettre à jour les cartes de stats
     updateStatsCards() {
+        console.log('📊 [DEBUG] Mise à jour des stats:', this.stats);
+        
         const elements = {
             'stat-synced': this.stats.received,
             'stat-pending': this.stats.pending,
@@ -281,7 +398,12 @@ class OrdersModule {
 
         Object.entries(elements).forEach(([id, value]) => {
             const el = document.getElementById(id);
-            if (el) el.textContent = value;
+            if (el) {
+                console.log(`📊 [DEBUG] Mise à jour ${id}: ${el.textContent} → ${value}`);
+                el.textContent = value;
+            } else {
+                console.warn(`📊 [DEBUG] Élément ${id} introuvable !`);
+            }
         });
     }
 
@@ -360,7 +482,11 @@ class OrdersModule {
 // Initialiser le module
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('orders-module')) {
+        console.log('🚀 [DEBUG] Initialisation OrdersModule...');
         window.ordersModule = new OrdersModule();
+        console.log('🚀 [DEBUG] OrdersModule initialisé:', window.ordersModule);
+    } else {
+        console.log('⚠️ [DEBUG] Element orders-module introuvable, module non initialisé');
     }
 });
 

@@ -13,6 +13,10 @@ const sseConnections = new Set<Response>();
  * Server-Sent Events endpoint for real-time logs
  */
 router.get('/stream', (req: Request, res: Response) => {
+  console.log('🔗 [DEBUG SSE] Nouvelle connexion SSE démarrée');
+  console.log('🔗 [DEBUG SSE] User-Agent:', req.get('User-Agent'));
+  console.log('🔗 [DEBUG SSE] IP:', req.ip);
+  
   // Set headers for SSE
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -23,22 +27,30 @@ router.get('/stream', (req: Request, res: Response) => {
   });
 
   // Send initial connection message
-  res.write(`data: ${JSON.stringify({
+  const welcomeMessage = {
     type: 'connected',
     timestamp: new Date().toISOString(),
     message: 'Connexion établie au stream temps réel'
-  })}\n\n`);
+  };
+  
+  console.log('🔗 [DEBUG SSE] Envoi message de bienvenue:', welcomeMessage);
+  res.write(`data: ${JSON.stringify(welcomeMessage)}\n\n`);
 
   // Add connection to active connections
   sseConnections.add(res);
+  console.log('🔗 [DEBUG SSE] Connexion ajoutée, total:', sseConnections.size);
 
   // Handle client disconnect
   req.on('close', () => {
+    console.log('🔗 [DEBUG SSE] Connexion fermée (close)');
     sseConnections.delete(res);
+    console.log('🔗 [DEBUG SSE] Connexions restantes:', sseConnections.size);
   });
 
   req.on('aborted', () => {
+    console.log('🔗 [DEBUG SSE] Connexion abandonnée (aborted)');
     sseConnections.delete(res);
+    console.log('🔗 [DEBUG SSE] Connexions restantes:', sseConnections.size);
   });
 });
 
@@ -48,14 +60,30 @@ router.get('/stream', (req: Request, res: Response) => {
 export function broadcastToClients(data: any) {
   const message = `data: ${JSON.stringify(data)}\n\n`;
   
-  sseConnections.forEach(res => {
+  console.log('📡 [DEBUG SSE] Diffusion vers', sseConnections.size, 'clients connectés');
+  console.log('📡 [DEBUG SSE] Message à diffuser:', message);
+  console.log('📡 [DEBUG SSE] Données complètes:', data);
+  
+  let successCount = 0;
+  let errorCount = 0;
+  let clientIndex = 0;
+  
+  sseConnections.forEach((res) => {
+    clientIndex++;
     try {
+      console.log(`📡 [DEBUG SSE] Envoi vers client ${clientIndex}...`);
       res.write(message);
+      successCount++;
+      console.log(`✅ [DEBUG SSE] Client ${clientIndex} OK`);
     } catch (error) {
+      console.error(`❌ [DEBUG SSE] Erreur client ${clientIndex}:`, error);
       // Remove broken connections
       sseConnections.delete(res);
+      errorCount++;
     }
   });
+  
+  console.log(`📊 [DEBUG SSE] Diffusion terminée: ${successCount} succès, ${errorCount} erreurs`);
 }
 
 /**

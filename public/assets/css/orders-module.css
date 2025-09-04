@@ -457,3 +457,36 @@
     margin-left: 36px;
     margin-top: 2px;
 }
+
+.console-line .action-btn {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-left: 8px;
+    transition: all 0.2s ease;
+}
+
+.console-line .action-btn:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+}
+
+.console-line .action-btn.success {
+    background: #16a34a;
+}
+
+.console-line .action-btn.success:hover {
+    background: #15803d;
+}
+
+.console-line .action-btn.warning {
+    background: #ea580c;
+}
+
+.console-line .action-btn.warning:hover {
+    background: #c2410c;
+}

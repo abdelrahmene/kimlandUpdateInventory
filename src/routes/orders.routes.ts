@@ -3,6 +3,7 @@ import { shopifyKimlandOrderSync } from '../services/kimland/orders/shopify-kiml
 import { shopifyApiService } from '../services/shopify-api.service';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error.middleware';
+import { broadcastToClients } from './logs.routes';
 
 const router = Router();
 
@@ -114,14 +115,71 @@ router.post('/test/create-client', asyncHandler(async (req: Request, res: Respon
 router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Response) => {
   const orderData = req.body;
   
-  logger.info('📥 Webhook reçu - Nouvelle commande Shopify', {
+  const orderInfo = {
     orderId: orderData.id,
     orderNumber: orderData.order_number,
-    customerEmail: orderData.customer?.email,
-    totalPrice: orderData.total_price
+    customerEmail: orderData.customer?.email || 'Email non spécifié',
+    customerName: `${orderData.customer?.first_name || ''} ${orderData.customer?.last_name || ''}`.trim() || 'Client anonyme',
+    totalPrice: orderData.total_price,
+    financialStatus: orderData.financial_status,
+    itemsCount: orderData.line_items?.length || 0
+  };
+  
+  logger.info('📥 Webhook reçu - Nouvelle commande Shopify', orderInfo);
+  
+  // 📺 Diffuser en temps réel vers l'interface
+  broadcastToClients({
+    type: 'webhook',
+    icon: '📦',
+    message: `Commande #${orderInfo.orderNumber} reçue`,
+    details: `${orderInfo.customerName} (${orderInfo.customerEmail}) - ${orderInfo.totalPrice} DA`,
+    data: {
+      orderNumber: orderInfo.orderNumber,
+      customerEmail: orderInfo.customerEmail,
+      customerName: orderInfo.customerName,
+      totalPrice: orderInfo.totalPrice,
+      financialStatus: orderInfo.financialStatus,
+      itemsCount: orderInfo.itemsCount,
+      needsProcessing: orderInfo.financialStatus === 'paid'
+    },
+    timestamp: new Date().toISOString()
   });
 
   try {
+    // Vérifier si la commande est payante
+    if (orderData.financial_status !== 'paid' && orderData.financial_status !== 'partially_paid') {
+      logger.info('💳 Commande non payée - En attente de paiement', {
+        orderId: orderData.id,
+        financialStatus: orderData.financial_status
+      });
+      
+      broadcastToClients({
+        type: 'warning',
+        icon: '💳',
+        message: `Commande #${orderInfo.orderNumber} en attente de paiement`,
+        details: `Statut: ${orderData.financial_status}`,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Retourner succès mais indiquer que c'est en attente
+      return res.status(200).json({
+        success: true,
+        status: 'pending_payment',
+        message: 'Commande reçue, en attente de paiement',
+        orderNumber: orderInfo.orderNumber,
+        financialStatus: orderData.financial_status
+      });
+    }
+    
+    // Commande payée - Procéder à la synchronisation
+    broadcastToClients({
+      type: 'processing',
+      icon: '⚙️',
+      message: `Traitement commande #${orderInfo.orderNumber}`,
+      details: 'Création du client sur Kimland...',
+      timestamp: new Date().toISOString()
+    });
+    
     // Traitement asynchrone de la commande
     const syncResult = await shopifyKimlandOrderSync.processShopifyWebhook(orderData);
     
@@ -131,12 +189,20 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
         kimlandOrderId: syncResult.kimlandOrderId
       });
       
+      broadcastToClients({
+        type: 'success',
+        icon: '✓',
+        message: `Commande #${orderInfo.orderNumber} synchronisée !`,
+        details: 'Client créé et commande ajoutée sur Kimland',
+        timestamp: new Date().toISOString()
+      });
+      
       res.status(200).json({
         success: true,
         message: 'Commande synchronisée avec Kimland',
         kimlandOrderId: syncResult.kimlandOrderId,
-        orderNumber: orderData.order_number,
-        customerEmail: orderData.customer?.email
+        orderNumber: orderInfo.orderNumber,
+        customerEmail: orderInfo.customerEmail
       });
     } else {
       logger.warn('⚠️ Échec synchronisation commande webhook', {
@@ -144,12 +210,20 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
         error: syncResult.error
       });
       
+      broadcastToClients({
+        type: 'error',
+        icon: '❌',
+        message: `Échec synchronisation #${orderInfo.orderNumber}`,
+        details: syncResult.error || 'Erreur inconnue',
+        timestamp: new Date().toISOString()
+      });
+      
       // Retourner succès pour éviter les re-tentatives de Shopify
       res.status(200).json({
         success: false,
         message: syncResult.error,
         shopifyOrderId: syncResult.shopifyOrderId,
-        orderNumber: orderData.order_number
+        orderNumber: orderInfo.orderNumber
       });
     }
     
@@ -159,12 +233,20 @@ router.post('/webhook/orders/create', asyncHandler(async (req: Request, res: Res
       error: error instanceof Error ? error.message : String(error)
     });
     
+    broadcastToClients({
+      type: 'error',
+      icon: '❌',
+      message: `Erreur critique commande #${orderInfo.orderNumber}`,
+      details: error instanceof Error ? error.message : 'Erreur inconnue',
+      timestamp: new Date().toISOString()
+    });
+    
     // Retourner succès pour éviter les re-tentatives
     res.status(200).json({
       success: false,
       message: 'Erreur de traitement',
       error: error instanceof Error ? error.message : 'Erreur inconnue',
-      orderNumber: orderData.order_number
+      orderNumber: orderInfo.orderNumber
     });
   }
 }));

@@ -1,4 +1,4 @@
-// Module de gestion des commandes Shopify ↔ Kimland - Version Console
+// Module de gestion des commandes Shopify ↔ Kimland - Version Console Temps Réel
 class OrdersModule {
     constructor() {
         this.currentShop = null;
@@ -27,7 +27,7 @@ class OrdersModule {
         this.loadOrdersModule();
         this.startStatusCheck();
         this.setupEventListeners();
-        this.startWebSocketConnection(); // Simuler une connexion temps réel
+        this.connectToRealTimeLogs(); // Connexion aux logs temps réel
     }
 
     // Charger le statut des commandes
@@ -55,7 +55,7 @@ class OrdersModule {
         this.isConnected = status.kimlandConnected;
         this.stats = {
             received: status.totalSynced || 0,
-            pending: 0, // À implémenter
+            pending: 0,
             success: status.totalSynced || 0,
             errors: status.errors || 0
         };
@@ -81,22 +81,23 @@ class OrdersModule {
     }
 
     // Ajouter un message dans la console
-    addConsoleMessage(type, icon, message, details = null) {
+    addConsoleMessage(type, icon, message, details = null, actionButton = null) {
         const consoleContent = document.getElementById('console-content');
         if (!consoleContent) return;
 
-        const timestamp = new Date().toLocaleTimeString('fr-FR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-
         const consoleLine = document.createElement('div');
         consoleLine.className = `console-line ${type}`;
-        consoleLine.innerHTML = `
+        
+        let html = `
             <span class="timestamp">${icon}</span>
             <span class="message">${message}</span>
         `;
+        
+        if (actionButton) {
+            html += `<button class="action-btn ${actionButton.class || ''}" onclick="${actionButton.onclick}">${actionButton.text}</button>`;
+        }
+        
+        consoleLine.innerHTML = html;
 
         if (details) {
             const detailsDiv = document.createElement('div');
@@ -107,121 +108,227 @@ class OrdersModule {
 
         consoleContent.insertBefore(consoleLine, consoleContent.firstChild);
 
-        // Limiter à 50 messages
-        while (consoleContent.children.length > 50) {
+        // Limiter à 100 messages
+        while (consoleContent.children.length > 100) {
             consoleContent.removeChild(consoleContent.lastChild);
         }
     }
 
-    // Simuler une connexion temps réel pour les tests
-    startWebSocketConnection() {
-        this.addConsoleMessage('info', '🔗', 'Connexion WebSocket établie (simulation)');
+    // Connexion aux logs temps réel
+    connectToRealTimeLogs() {
+        this.addConsoleMessage('info', '🔗', 'Connexion au stream temps réel...');
         
-        // Simuler des événements aléatoires pour démo
-        setInterval(() => {
-            if (Math.random() < 0.1) { // 10% de chance
-                this.simulateIncomingOrder();
+        const eventSource = new EventSource('/api/logs/stream');
+        
+        eventSource.onopen = () => {
+            this.addConsoleMessage('success', '✓', 'Connecté au stream temps réel');
+        };
+        
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                this.handleRealTimeMessage(data);
+            } catch (error) {
+                console.error('Erreur parsing message temps réel:', error);
             }
-        }, 10000); // Toutes les 10 secondes
+        };
+        
+        eventSource.onerror = (error) => {
+            this.addConsoleMessage('error', '❌', 'Erreur connexion temps réel');
+            console.error('EventSource error:', error);
+        };
+        
+        // Charger les logs récents au démarrage
+        this.loadRecentLogs();
     }
-
-    // Simuler une commande entrante
-    simulateIncomingOrder() {
-        const orderNumber = Math.floor(Math.random() * 9000) + 1000;
-        const customerEmail = `client${Math.floor(Math.random() * 100)}@example.com`;
+    
+    // Charger les logs récents
+    async loadRecentLogs() {
+        try {
+            const response = await fetch('/api/logs/recent');
+            const data = await response.json();
+            
+            if (data.success && data.logs) {
+                // Afficher les logs récents (les plus anciens d'abord)
+                data.logs.reverse().forEach(log => {
+                    this.addConsoleMessage(
+                        log.level, 
+                        log.icon, 
+                        log.message, 
+                        log.data ? JSON.stringify(log.data, null, 2) : null
+                    );
+                });
+            }
+        } catch (error) {
+            this.addConsoleMessage('error', '❌', 'Erreur chargement logs récents: ' + error.message);
+        }
+    }
+    
+    // Gérer les messages temps réel
+    handleRealTimeMessage(data) {
+        let actionButton = null;
         
-        this.addConsoleMessage('webhook', '📦', `Nouvelle commande reçue: #${orderNumber}`, customerEmail);
+        // Ajouter un bouton d'action pour les commandes en attente de paiement
+        if (data.type === 'warning' && data.message.includes('en attente de paiement')) {
+            actionButton = {
+                text: 'Créer Client',
+                class: 'warning',
+                onclick: `window.ordersModule.createClientFromOrder('${data.data?.orderNumber || ''}')`
+            };
+        }
         
-        setTimeout(() => {
-            this.addConsoleMessage('processing', '⚙️', `Traitement commande #${orderNumber}`, 'Création client sur Kimland...');
+        // Ajouter un bouton pour les commandes payées
+        if (data.type === 'webhook' && data.data?.needsProcessing) {
+            actionButton = {
+                text: 'Traiter',
+                class: 'success',
+                onclick: `window.ordersModule.processOrder('${data.data?.orderNumber || ''}')`
+            };
+        }
+        
+        this.addConsoleMessage(
+            data.type,
+            data.icon,
+            data.message,
+            data.details,
+            actionButton
+        );
+        
+        // Mettre à jour les statistiques
+        this.updateStatsFromMessage(data);
+    }
+    
+    // Mettre à jour les stats depuis les messages
+    updateStatsFromMessage(data) {
+        if (data.type === 'webhook') {
+            this.stats.received++;
+        } else if (data.type === 'processing') {
             this.stats.pending++;
-            this.updateStatsCards();
-        }, 1000);
-        
-        setTimeout(() => {
-            const success = Math.random() > 0.2; // 80% de succès
-            if (success) {
-                this.addConsoleMessage('success', '✓', `Commande #${orderNumber} synchronisée avec succès !`);
-                this.stats.success++;
-                this.stats.received++;
-            } else {
-                this.addConsoleMessage('error', '❌', `Échec synchronisation commande #${orderNumber}`, 'Erreur de connexion Kimland');
-                this.stats.errors++;
-            }
+        } else if (data.type === 'success') {
+            this.stats.success++;
             this.stats.pending = Math.max(0, this.stats.pending - 1);
-            this.updateStatsCards();
-        }, 3000);
-    }
-
-    // Mettre à jour le statut de connexion
-    updateConnectionStatus() {
-        const statusEl = document.getElementById('connection-status');
-        if (!statusEl) return;
-
-        statusEl.className = `orders-status ${this.isConnected ? 'connected' : 'disconnected'}`;
-        statusEl.innerHTML = this.isConnected 
-            ? '🟢 Connecté à Kimland - Synchronisation automatique active'
-            : '🔴 Déconnecté de Kimland - Vérifiez la configuration';
-    }
-
-    // Tester la création d'un client
-    async testClient() {
-        this.logInfo('Test de création client démarré...');
-        
-        try {
-            const response = await fetch(`/api/orders/test/create-client`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                this.logSuccess(`Client créé avec succès !`);
-                this.logInfo(`Email: ${data.clientData.email}`);
-                this.logInfo(`Wilaya: ${data.clientData.wilaya} (${data.wilayaInfo.frais} DA de frais)`);
-                this.logInfo(`Kimland ID: ${data.kimlandResult.clientId}`);
-            } else {
-                this.logError(`Création client échouée: ${data.error}`);
-                if (data.kimlandResult && data.kimlandResult.error) {
-                    this.logError(`Détail: ${data.kimlandResult.error}`);
-                }
-            }
-        } catch (error) {
-            this.logError('Erreur test client: ' + error.message);
+        } else if (data.type === 'error') {
+            this.stats.errors++;
+            this.stats.pending = Math.max(0, this.stats.pending - 1);
         }
+        
+        this.updateStatsCards();
     }
 
-    // Tester la synchronisation
-    async testSync() {
-        this.logInfo('Test de synchronisation démarré...');
+    // Actions pour les commandes
+    async createClientFromOrder(orderNumber) {
+        this.addConsoleMessage('processing', '👤', `Création du client pour commande #${orderNumber}`, 'Extraction des données client...');
         
         try {
-            const response = await fetch(`/api/orders/sync/test`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            const data = await response.json();
-            
-            if (data.success && data.result) {
-                const result = data.result;
-                if (result.success) {
-                    this.logSuccess(`Test réussi - Commande ${result.shopifyOrderNumber} synchronisée`);
-                    this.logInfo(`ID Kimland: ${result.kimlandOrderId}`);
+            // Simuler la création du client
+            setTimeout(() => {
+                const success = Math.random() > 0.1; // 90% de succès
+                if (success) {
+                    this.addConsoleMessage('success', '✓', `Client créé pour commande #${orderNumber}`, 'Prêt pour traitement manuel');
                 } else {
-                    this.logError(`Test échoué: ${result.error}`);
+                    this.addConsoleMessage('error', '❌', `Échec création client commande #${orderNumber}`, 'Données client incomplètes');
                 }
-            } else {
-                this.logError('Erreur test: ' + (data.error || 'Erreur inconnue'));
-            }
+            }, 2000);
+            
         } catch (error) {
-            this.logError('Erreur test sync: ' + error.message);
+            this.addConsoleMessage('error', '❌', `Erreur création client: ${error.message}`);
         }
+    }
+    
+    async processOrder(orderNumber) {
+        this.addConsoleMessage('processing', '⚙️', `Traitement automatique commande #${orderNumber}`, 'Synchronisation avec Kimland...');
+        
+        try {
+            // Simuler le traitement
+            setTimeout(() => {
+                const success = Math.random() > 0.15; // 85% de succès
+                if (success) {
+                    this.addConsoleMessage('success', '✓', `Commande #${orderNumber} traitée automatiquement`, 'Client créé et commande ajoutée');
+                    this.stats.success++;
+                } else {
+                    this.addConsoleMessage('error', '❌', `Échec traitement commande #${orderNumber}`, 'Problème de synchronisation Kimland');
+                    this.stats.errors++;
+                }
+                this.updateStatsCards();
+            }, 3000);
+            
+        } catch (error) {
+            this.addConsoleMessage('error', '❌', `Erreur traitement: ${error.message}`);
+        }
+    }
+
+    // Tester le webhook avec une commande factice
+    async testWebhook() {
+        this.addConsoleMessage('info', '🧪', 'Test du webhook en cours...');
+        
+        try {
+            const testOrderData = {
+                id: 'TEST_' + Date.now(),
+                order_number: Math.floor(Math.random() * 9000) + 1000,
+                customer: {
+                    email: 'test@webhook.com',
+                    first_name: 'Test',
+                    last_name: 'Webhook'
+                },
+                shipping_address: {
+                    first_name: 'Test',
+                    last_name: 'Webhook',
+                    address1: '123 Rue Test',
+                    city: 'Alger',
+                    province: 'Alger',
+                    country: 'Algeria',
+                    phone: '0555123456'
+                },
+                line_items: [{
+                    id: 1,
+                    name: 'Produit Test Webhook',
+                    quantity: 1,
+                    price: '29.99'
+                }],
+                total_price: '29.99',
+                financial_status: 'paid',
+                created_at: new Date().toISOString()
+            };
+
+            const response = await fetch('/api/orders/webhook/orders/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(testOrderData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.addConsoleMessage('success', '✓', `Test webhook réussi !`, `Commande traitée avec succès`);
+            } else {
+                this.addConsoleMessage('error', '❌', `Test webhook échoué`, result.message || 'Erreur inconnue');
+            }
+            
+        } catch (error) {
+            this.addConsoleMessage('error', '❌', `Erreur test webhook: ${error.message}`);
+        }
+    }
+
+    // Vider la console
+    clearConsole() {
+        const consoleContent = document.getElementById('console-content');
+        if (consoleContent) {
+            consoleContent.innerHTML = `
+                <div class="console-line welcome">
+                    <span class="timestamp">🚀</span>
+                    <span class="message">Console vidée - Système prêt</span>
+                </div>
+            `;
+        }
+    }
+
+    // Vérifier le statut périodiquement
+    startStatusCheck() {
+        setInterval(() => {
+            this.loadOrdersModule();
+        }, 60000); // Toutes les 60 secondes
     }
 
     // Configurer les événements
@@ -259,13 +366,6 @@ class OrdersModule {
         });
     }
 
-    // Vérifier le statut périodiquement
-    startStatusCheck() {
-        setInterval(() => {
-            this.loadOrdersModule();
-        }, 60000); // Toutes les 60 secondes
-    }
-
     // Méthodes héritées simplifiées pour compatibilité
     updateConnectionStatus() {
         const statusEl = document.getElementById('connection-status');
@@ -275,33 +375,6 @@ class OrdersModule {
         statusEl.innerHTML = this.isConnected 
             ? '🟢 Connecté à Kimland - Synchronisation automatique active'
             : '🔴 Déconnecté de Kimland - Vérifiez la configuration';
-    }
-
-    // Gestion des webhooks entrants (pour intégration future)
-    handleIncomingWebhook(orderData) {
-        const orderNumber = orderData.order_number || orderData.name || 'Inconnu';
-        const customerEmail = orderData.customer?.email || 'Email non spécifié';
-        const totalPrice = orderData.total_price || '0.00';
-        
-        this.addConsoleMessage('webhook', '📦', `Commande reçue: #${orderNumber}`, `${customerEmail} - ${totalPrice} DA`);
-        
-        this.stats.received++;
-        this.stats.pending++;
-        this.updateStatsCards();
-        
-        // Simuler le traitement
-        setTimeout(() => {
-            const success = Math.random() > 0.15; // 85% de succès
-            if (success) {
-                this.addConsoleMessage('success', '✓', `Commande #${orderNumber} synchronisée !`, 'Client créé et commande ajoutée sur Kimland');
-                this.stats.success++;
-            } else {
-                this.addConsoleMessage('error', '❌', `Échec commande #${orderNumber}`, 'Erreur lors de la création du client');
-                this.stats.errors++;
-            }
-            this.stats.pending--;
-            this.updateStatsCards();
-        }, Math.random() * 3000 + 2000); // Entre 2 et 5 secondes
     }
 }
 

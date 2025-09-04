@@ -3,14 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kimland App - Dashboard</title>
+    <title>Kimland Sync</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        .loading { animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .sync-progress {
-            background: linear-gradient(90deg, #10B981 0%, #059669 100%);
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
+        
+        body {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+            min-height: 100vh;
+        }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .search-container {
+            position: relative;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .search-container.focused {
+            transform: scale(1.02);
+        }
+        
+        .search-input {
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            color: #1f2937;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: rgba(59, 130, 246, 0.6);
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .search-input::placeholder {
+            color: rgba(107, 114, 128, 0.7);
+        }
+        
+        .search-icon {
+            transition: all 0.3s ease;
+            color: rgba(107, 114, 128, 0.7);
+        }
+        
+        .search-container.focused .search-icon {
+            color: #3b82f6;
+            transform: scale(1.1);
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.8) 100%);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+            color: #374151;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.9) 100%);
+            border-color: rgba(0, 0, 0, 0.15);
+        }
+        
+        .btn:active {
+            transform: translateY(-1px);
+        }
+        
         .modal {
             display: none;
             position: fixed;
@@ -19,1506 +86,627 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.4);
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(8px);
         }
+        
         .modal-content {
-            background-color: white;
-            margin: 15% auto;
-            padding: 20px;
-            border-radius: 8px;
-            width: 80%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            margin: 5% auto;
+            padding: 32px;
+            border-radius: 16px;
+            width: 90%;
             max-width: 600px;
-            max-height: 70vh;
+            max-height: 80vh;
             overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
-        /* Nouveaux styles pour l'UI améliorée */
-        .line-clamp-2 {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
+        .progress-bar {
+            background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%);
+            border-radius: 4px;
+        }
+        
+        .pulse-loading {
+            animation: pulse-subtle 2s infinite;
+        }
+        
+        @keyframes pulse-subtle {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .fade-in {
+            animation: fade-in 0.6s ease-out;
+        }
+        
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .search-input:focus {
+            outline: none;
+        }
+        
+        .typing-indicator {
+            opacity: 0;
+            transform: scale(0.95);
+            transition: all 0.2s ease;
+        }
+        
+        .typing-indicator.active {
+            opacity: 1;
+            transform: scale(1);
+        }
+        
+        .progress-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            color: white;
+            padding: 16px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+            transform: translateX(400px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            min-width: 300px;
+        }
+        
+        .progress-toast.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        
+        .mini-progress-bar {
+            height: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
             overflow: hidden;
+            margin-top: 8px;
         }
         
-        .gradient-text {
-            background: linear-gradient(45deg, #3B82F6, #6366F1, #8B5CF6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .mini-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #06b6d4);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            position: relative;
         }
         
-        .search-highlight {
-            background: linear-gradient(135deg, #FEF3C7, #FDE68A);
-            border: 2px solid #F59E0B;
-            box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+        .mini-progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+            animation: shimmer 2s infinite;
         }
         
-        .result-item:hover {
-            transform: translateX(4px);
-            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
-        }
-        
-        .glass-effect {
-            backdrop-filter: blur(10px);
-            background: rgba(255, 255, 255, 0.8);
-        }
-        
-        @keyframes slideInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .slide-in-up {
-            animation: slideInUp 0.3s ease-out;
-        }
-        
-        .floating-button {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .floating-button:hover {
-            transform: translateY(-2px) scale(1.05);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
         }
     </style>
 </head>
 <body class="bg-gray-50">
     <div class="min-h-screen">
-        <!-- Header -->
-        <header class="bg-white shadow-sm border-b">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center py-6">
-                    <div>
-                        <h1 class="text-2xl font-bold text-gray-900">🔍 Kimland App</h1>
-                        <p class="text-sm text-gray-600">Synchronisation Shopify ↔ Kimland</p>
-                    </div>
-                    <div id="shop-status" class="flex items-center space-x-2">
-                        <div class="w-3 h-3 bg-yellow-400 rounded-full"></div>
-                        <span class="text-sm text-gray-600">Connexion...</span>
-                    </div>
-                </div>
+        <!-- Loading -->
+        <div id="loading" class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+                <p class="text-gray-600 font-medium">Connexion à votre boutique...</p>
             </div>
-        </header>
+        </div>
 
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div id="loading" class="text-center py-12">
-                <div class="loading text-4xl mb-4">⏳</div>
-                <p class="text-gray-600">Chargement de votre boutique...</p>
+        <!-- Dashboard -->
+        <div id="dashboard" class="hidden">
+            <!-- Header -->
+            <div class="text-center pt-16 pb-12">
+                <h1 class="text-4xl font-light text-gray-900 mb-3 tracking-tight">Kimland Sync</h1>
+                <p class="text-lg text-gray-600 font-light">Synchronisation intelligente Shopify ↔ Kimland</p>
             </div>
 
-            <div id="dashboard" style="display: none;">
-                <!-- Connection Status Banner -->
-                <div id="kimland-connection-banner" class="bg-white rounded-lg shadow mb-6 border-l-4 border-orange-400">
-                    <div class="px-6 py-4">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center">
-                                <div id="kimland-connection-icon" class="w-4 h-4 bg-orange-400 rounded-full mr-3 animate-pulse"></div>
-                                <div>
-                                    <h3 class="text-lg font-medium text-gray-900">État Connexion Kimland</h3>
-                                    <p id="kimland-connection-status" class="text-sm text-gray-600">Vérification en cours...</p>
-                                </div>
-                            </div>
-                            <div class="flex space-x-2">
-                                <button onclick="testKimlandConnection()" class="bg-blue-600 text-white px-3 py-1 text-sm rounded-md hover:bg-blue-700">
-                                    🔗 Test
-                                </button>
-                                <button onclick="forceReconnectKimland()" class="bg-orange-600 text-white px-3 py-1 text-sm rounded-md hover:bg-orange-700">
-                                    🔄 Reconnecter
-                                </button>
-                            </div>
-                        </div>
-                        <div id="kimland-connection-details" class="mt-2 text-xs text-gray-500" style="display: none;">
-                            <!-- Détails de connexion seront ajoutés ici -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Stats Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="text-2xl font-bold text-gray-900" id="total-products">-</div>
-                        <div class="text-sm text-gray-600">Total Produits Shopify</div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="text-2xl font-bold text-green-600" id="with-sku">-</div>
-                        <div class="text-sm text-gray-600">Avec SKU/Référence</div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="text-2xl font-bold text-red-600" id="without-sku">-</div>
-                        <div class="text-sm text-gray-600">Sans SKU/Référence</div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="text-2xl font-bold text-blue-600" id="sync-success">-</div>
-                        <div class="text-sm text-gray-600">Sync Réussie</div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="text-2xl font-bold text-purple-600" id="last-sync">-</div>
-                        <div class="text-sm text-gray-600">Dernière Sync</div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="text-2xl font-bold text-orange-600" id="kimland-status">-</div>
-                        <div class="text-sm text-gray-600">Kimland</div>
-                    </div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="bg-white rounded-lg shadow mb-6">
-                    <div class="px-6 py-4 border-b">
-                        <div class="flex flex-col sm:flex-row gap-4">
-                            <input 
-                                type="text" 
-                                id="search-input" 
-                                placeholder="Rechercher un produit..."
-                                class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
-                            <div class="flex gap-2">
-                                <button onclick="refreshData()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
-                                    🔄 Actualiser
-                                </button>
-                                <button onclick="updateAllSKU()" class="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700">
-                                    🏷️ MAJ SKU
-                                </button>
-                                <button onclick="syncAllInventory()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">
-                                    📦 Sync Inventaire
-                                </button>
-                                <button onclick="exportData()" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">
-                                    📥 Exporter
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tabs -->
-                <div class="bg-white rounded-lg shadow mb-6">
-                    <div class="border-b border-gray-200">
-                        <nav class="-mb-px flex">
-                            <button onclick="switchTab('products')" id="tab-products" class="py-2 px-4 border-b-2 border-green-500 text-green-600 font-medium text-sm">
-                                📦 Produits
-                            </button>
-                            <button onclick="switchTab('sync-history')" id="tab-sync-history" class="py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
-                                📊 Historique Sync
-                            </button>
-                            <button onclick="switchTab('settings')" id="tab-settings" class="py-2 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
-                                ⚙️ Paramètres
-                            </button>
-                        </nav>
-                    </div>
-                </div>
-
-                <!-- Products Tab -->
-                <div id="tab-content-products" class="bg-white rounded-lg shadow">
-                    <div class="px-6 py-4 border-b">
-                        <h2 class="text-lg font-semibold text-gray-900">Recherche et Synchronisation Produits</h2>
-                        <p class="text-sm text-gray-600 mt-1">Recherchez un produit par nom ou référence pour le synchroniser individuellement</p>
+            <!-- Main Search Section -->
+            <div class="max-w-4xl mx-auto px-6 mb-16">
+                <div class="glass rounded-3xl p-12 search-container">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-medium text-gray-900 mb-2">Recherche Produit</h2>
+                        <p class="text-gray-600">Tapez le nom du produit ou sa référence SKU</p>
                     </div>
                     
-                    <!-- Zone de recherche premium -->
-                    <div class="p-6">
-                        <div class="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-6 border-2 border-blue-200 shadow-lg">
-                            <div class="flex items-center mb-6">
-                                <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-3 rounded-xl mr-4 shadow-lg">
-                                    <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h3 class="text-2xl font-bold text-gray-900">🔍 Recherche Produit Intelligent</h3>
-                                    <p class="text-sm text-gray-600 mt-1">Trouvez et synchronisez vos produits en temps réel</p>
-                                </div>
+                    <div class="relative max-w-2xl mx-auto">
+                        <div class="relative">
+                            <div class="absolute left-4 top-1/2 transform -translate-y-1/2 search-icon">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
                             </div>
                             
-                            <div class="flex flex-col sm:flex-row gap-4 mb-6">
-                                <div class="flex-1 relative">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                        </svg>
-                                    </div>
-                                    <input 
-                                        type="text" 
-                                        id="product-search-input" 
-                                        placeholder="Tapez le nom du produit ou SKU/référence..."
-                                        class="w-full pl-12 pr-4 py-4 text-lg border-2 border-blue-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-200 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md"
-                                        autocomplete="off">
-                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
-                                        <div id="search-counter" class="hidden bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-medium">
-                                            0 résultats
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="flex gap-2">
-                                    <button 
-                                        onclick="searchProducts()" 
-                                        class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-xl hover:from-blue-700 hover:to-indigo-700 font-semibold transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-1">
-                                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                        </svg>
-                                        Rechercher
-                                    </button>
-                                    <button 
-                                        onclick="clearSearch()" 
-                                        class="bg-gray-500 text-white px-6 py-4 rounded-xl hover:bg-gray-600 font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1">
-                                        ✖️
-                                    </button>
-                                </div>
-                            </div>
+                            <input 
+                                type="text" 
+                                id="product-search-input" 
+                                placeholder="Rechercher un produit..."
+                                class="search-input w-full pl-14 pr-14 py-4 text-lg rounded-2xl transition-all duration-300"
+                                autocomplete="off">
                             
-                            <!-- Zone de résultats de recherche -->
-                            <div id="search-results" class="hidden">
-                                <div class="bg-white rounded-xl border-2 border-blue-200 shadow-lg max-h-96 overflow-y-auto">
-                                    <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-t-xl">
-                                        <div class="flex items-center justify-between">
-                                            <h4 class="font-semibold flex items-center">
-                                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v4a2 2 0 002 2h2m0-6h6a2 2 0 012 2v4a2 2 0 01-2 2h-6m1-5v4"></path>
-                                                </svg>
-                                                Résultats de recherche
-                                            </h4>
-                                            <div id="results-count" class="bg-white/20 px-2 py-1 rounded text-sm font-medium">
-                                                0 produit(s)
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="search-results-list" class="divide-y divide-gray-100">
-                                        <!-- Les résultats apparaîtront ici -->
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Indicateur de chargement -->
-                            <div id="search-loading" class="hidden">
-                                <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 text-center">
-                                    <div class="inline-flex items-center justify-center">
-                                        <div class="animate-spin rounded-full h-8 w-8 border-4 border-blue-200 border-t-blue-600 mr-4"></div>
-                                        <div>
-                                            <div class="text-blue-800 font-semibold text-lg">Recherche en cours...</div>
-                                            <div class="text-blue-600 text-sm mt-1">Analyse de votre catalogue Shopify</div>
-                                        </div>
-                                    </div>
-                                    <div class="mt-4 bg-blue-100 rounded-lg p-3">
-                                        <div class="w-full bg-blue-200 rounded-full h-2">
-                                            <div class="bg-gradient-to-r from-blue-600 to-indigo-600 h-2 rounded-full animate-pulse" style="width: 60%"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Message d'aide -->
-                            <div class="mt-4 bg-blue-100 border border-blue-300 rounded-lg p-4">
-                                <div class="flex items-start">
-                                    <div class="bg-blue-600 p-1 rounded-full mr-3 mt-0.5">
-                                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <h4 class="font-semibold text-blue-900 mb-1">💡 Comment utiliser la recherche :</h4>
-                                        <ul class="text-sm text-blue-800 space-y-1">
-                                            <li>• Tapez une partie du nom du produit (ex: "chaussure", "t-shirt")</li>
-                                            <li>• Ou utilisez le SKU/référence exact (ex: "NIKE-AIR-42")</li>
-                                            <li>• Cliquez sur un produit dans les résultats pour le synchroniser</li>
-                                            <li>• La recherche fonctionne sur tous vos produits Shopify</li>
-                                        </ul>
-                                    </div>
+                            <div class="absolute right-4 top-1/2 transform -translate-y-1/2">
+                                <div id="typing-indicator" class="typing-indicator">
+                                    <div class="w-6 h-6 border-2 border-blue-300 border-t-blue-500 rounded-full animate-spin"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Sync History Tab -->
-                <div id="tab-content-sync-history" class="bg-white rounded-lg shadow" style="display: none;">
-                    <div class="px-6 py-4 border-b">
-                        <h2 class="text-lg font-semibold text-gray-900">Historique des Synchronisations</h2>
-                    </div>
-                    <div id="sync-history-list" class="divide-y divide-gray-200">
-                        <div class="p-6 text-center text-gray-500">Aucun historique de synchronisation</div>
-                    </div>
-                </div>
-
-                <!-- Settings Tab -->
-                <div id="tab-content-settings" class="bg-white rounded-lg shadow" style="display: none;">
-                    <div class="px-6 py-4 border-b">
-                        <h2 class="text-lg font-semibold text-gray-900">Paramètres Kimland</h2>
-                    </div>
-                    <div class="p-6">
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">URL Kimland</label>
-                                <input type="text" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" value="https://kimland.dz" readonly>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">Statut Connexion</label>
-                                <div class="mt-1 flex items-center">
-                                    <div id="kimland-status-indicator" class="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
-                                    <span id="kimland-status-text" class="text-sm text-gray-900">Vérification...</span>
+                    <!-- Search Results -->
+                    <div id="search-results" class="hidden mt-8">
+                        <div class="glass rounded-2xl border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="font-medium text-gray-900">Résultats</h3>
+                                    <span id="results-count" class="text-sm text-gray-600">0 produit(s)</span>
                                 </div>
                             </div>
-                            <div class="flex gap-4">
-                                <button onclick="testKimlandConnection()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
-                                    🔗 Test Connexion
-                                </button>
-                                <button onclick="clearKimlandSession()" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
-                                    🗑️ Vider Session
-                                </button>
+                            <div id="search-results-list" class="divide-y divide-gray-200 max-h-80 overflow-y-auto">
+                                <!-- Results appear here -->
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Search Loading -->
+                    <div id="search-loading" class="hidden mt-8 text-center py-8">
+                        <div class="inline-flex items-center justify-center">
+                            <div class="w-6 h-6 border-2 border-blue-300 border-t-blue-500 rounded-full animate-spin mr-3"></div>
+                            <span class="text-gray-700">Recherche en cours...</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div id="error" style="display: none;" class="text-center py-12">
-                <div class="text-4xl mb-4">❌</div>
-                <p class="text-gray-600 mb-4">Erreur de connexion à votre boutique</p>
-                <button onclick="window.location.reload()" class="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700">
-                    Réessayer
-                </button>
-            </div>
-        </main>
-    </div>
-
-    <!-- Modal pour le progrès de sync -->
-    <div id="sync-modal" class="modal">
-        <div class="modal-content">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-semibold">Synchronisation en cours</h3>
-                <div class="flex items-center space-x-2">
-                    <!-- 🚫 Bouton d'arrêt -->
-                    <button id="cancel-sync-btn" onclick="cancelSync()" 
-                            class="bg-red-600 text-white px-3 py-1 text-sm rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            style="display: none;">
-                        🚫 Arrêter
+            <!-- Action Buttons -->
+            <div class="max-w-4xl mx-auto px-6 mb-16">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <button 
+                        onclick="updateAllSKU()" 
+                        class="btn p-8 rounded-2xl text-left group">
+                        <div class="flex items-start">
+                            <div class="text-3xl mr-4 group-hover:scale-110 transition-transform duration-300">🏷️</div>
+                            <div>
+                                <h3 class="text-xl font-medium text-gray-900 mb-2">Mise à jour des SKU</h3>
+                                <p class="text-gray-600 mb-4">Met à jour toutes les références produits depuis Kimland</p>
+                                <div class="text-sm text-blue-600 font-medium">Action sur tous les produits →</div>
+                            </div>
+                        </div>
                     </button>
-                    <button onclick="closeSyncModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+
+                    <button 
+                        onclick="syncAllInventory()" 
+                        class="btn p-8 rounded-2xl text-left group">
+                        <div class="flex items-start">
+                            <div class="text-3xl mr-4 group-hover:scale-110 transition-transform duration-300">📦</div>
+                            <div>
+                                <h3 class="text-xl font-medium text-gray-900 mb-2">Synchronisation stocks</h3>
+                                <p class="text-gray-600 mb-4">Synchronise l'inventaire en temps réel avec Kimland</p>
+                                <div class="text-sm text-blue-600 font-medium">Synchronisation globale →</div>
+                            </div>
+                        </div>
+                    </button>
                 </div>
             </div>
-            <div id="sync-progress-container">
-                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
-                    <div id="sync-progress-bar" class="sync-progress h-2.5 rounded-full" style="width: 0%"></div>
-                </div>
-                <div class="text-sm text-gray-600 mb-4" id="sync-status">Préparation...</div>
-                <div id="sync-results" class="max-h-60 overflow-y-auto"></div>
-                
-                <!-- Zone d'information sur l'arrêt -->
-                <div id="cancel-info" class="bg-yellow-50 border border-yellow-200 rounded p-3 mt-4" style="display: none;">
-                    <div class="flex items-center">
-                        <span class="text-yellow-600 mr-2">⚠️</span>
-                        <span class="text-sm text-yellow-800">Arrêt en cours... Finalisation des opérations actuelles.</span>
+
+            <!-- Info Section -->
+            <div class="max-w-4xl mx-auto px-6 pb-16">
+                <div class="glass rounded-2xl p-8">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">À propos de Kimland Sync</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-600">
+                        <div>
+                            <strong class="text-gray-900">Recherche intelligente</strong><br>
+                            Trouvez instantanément vos produits par nom ou référence SKU
+                        </div>
+                        <div>
+                            <strong class="text-gray-900">Mise à jour SKU</strong><br>
+                            Applique automatiquement les références Kimland à vos produits Shopify
+                        </div>
+                        <div>
+                            <strong class="text-gray-900">Synchronisation stocks</strong><br>
+                            Maintient l'inventaire à jour entre vos deux plateformes
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    
+    <!-- Progress Toast -->
+    <div id="progress-toast" class="progress-toast">
+        <div class="flex items-center justify-between mb-2">
+            <span id="toast-title" class="font-medium">En cours...</span>
+            <button onclick="hideProgressToast()" class="text-gray-400 hover:text-white text-sm">×</button>
+        </div>
+        <div id="toast-message" class="text-sm text-gray-300 mb-2">Initialisation...</div>
+        <div class="mini-progress-bar">
+            <div id="toast-progress-fill" class="mini-progress-fill" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Sync Modal -->
+    <div id="sync-modal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-medium text-gray-900">Synchronisation en cours</h3>
+                <div class="flex items-center space-x-3">
+                    <button 
+                        id="cancel-sync-btn" 
+                        onclick="cancelSync()" 
+                        class="hidden btn px-4 py-2 text-sm text-red-600 hover:text-red-700">
+                        Arrêter
+                    </button>
+                    <button onclick="closeSyncModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+                </div>
+            </div>
+            
+            <div class="w-full bg-gray-200 rounded-full h-2 mb-6">
+                <div id="sync-progress-bar" class="progress-bar h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            
+            <div id="sync-status" class="text-gray-700 mb-4 font-medium">Préparation...</div>
+            
+            <div id="sync-results" class="max-h-60 overflow-y-auto bg-gray-50 rounded-lg p-4"></div>
+            
+            <div id="cancel-info" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-4">
+                <div class="text-yellow-800 text-sm">Arrêt en cours...</div>
+            </div>
+        </div>
+    </div>
 
     <script>
-        let currentShop = null;
-        let syncResults = [];
-        let currentTab = 'products';
-        // 🚫 Variables pour la gestion de l'arrêt de sync
-        let syncAbortController = null;
-        let isSyncCancelled = false;
-
-        // Get shop from URL parameters
+        let currentShop = null, syncAbortController = null, isSyncCancelled = false;
+        let searchTimeout = null;
+        
         const urlParams = new URLSearchParams(window.location.search);
         currentShop = urlParams.get('shop');
-
+        
         if (!currentShop) {
-            document.getElementById('error').style.display = 'block';
-            document.getElementById('loading').style.display = 'none';
+            document.getElementById('loading').innerHTML = '<div class="text-center"><div class="text-red-500 text-xl mb-2">×</div><p class="text-gray-600">Erreur: Boutique non spécifiée</p></div>';
         } else {
             loadDashboard();
         }
 
         async function loadDashboard() {
-            console.log('🚀 Chargement du dashboard', { currentShop });
-            
             try {
-                updateStatus('connecting', 'Connexion à ' + currentShop);
-                updateKimlandStatus('checking', 'Vérification...');
-                
-                console.log('📡 Récupération des produits Shopify', { shop: currentShop });
                 const response = await fetch(`/api/products?shop=${encodeURIComponent(currentShop)}`);
-                
                 if (!response.ok) {
                     const errorData = await response.json();
-                    console.error('❌ Erreur API produits:', errorData);
-                    
                     if (errorData.error === 'AUTH_REQUIRED' && errorData.install_url) {
-                        console.log('🔄 Redirection vers installation Shopify');
                         window.location.href = `/auth/install?shop=${encodeURIComponent(currentShop)}`;
                         return;
                     }
-                    
-                    throw new Error('Erreur de connexion: ' + (errorData.message || response.statusText));
+                    throw new Error('Erreur de connexion');
                 }
-
                 const data = await response.json();
-                console.log('✅ Données produits reçues:', { success: data.success, productsCount: data.products?.length });
-                
                 if (data.success) {
-                    updateStatus('connected', currentShop);
-                    displayProducts(data.products || []);
-                    updateStats(data.products || []);
-                    
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('dashboard').style.display = 'block';
-
-                    // Charger l'historique de sync
-                    console.log('📊 Chargement historique sync');
-                    loadSyncHistory();
-                    
-                    // Vérifier la connexion Kimland de façon détaillée
-                    console.log('🔍 Vérification connexion Kimland');
-                    checkKimlandStatusDetailed();
-                } else {
-                    throw new Error(data.message || 'Erreur inconnue');
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('dashboard').classList.remove('hidden');
+                    document.getElementById('dashboard').classList.add('fade-in');
                 }
             } catch (error) {
-                console.error('❌ Erreur chargement dashboard:', error);
-                updateStatus('error', 'Erreur');
-                updateKimlandStatus('error', 'Erreur de chargement');
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('error').style.display = 'block';
+                document.getElementById('loading').innerHTML = '<div class="text-center"><div class="text-red-500 text-xl mb-2">×</div><p class="text-gray-600">Erreur de chargement</p></div>';
             }
         }
 
-        function switchTab(tabName) {
-            // Masquer tous les contenus de tab
-            document.querySelectorAll('[id^="tab-content-"]').forEach(el => el.style.display = 'none');
-            
-            // Réinitialiser tous les boutons de tab
-            document.querySelectorAll('[id^="tab-"]').forEach(el => {
-                el.className = el.className.replace('border-green-500 text-green-600', 'border-transparent text-gray-500 hover:text-gray-700');
-            });
-            
-            // Activer le tab sélectionné
-            document.getElementById(`tab-content-${tabName}`).style.display = 'block';
-            document.getElementById(`tab-${tabName}`).className = document.getElementById(`tab-${tabName}`).className.replace('border-transparent text-gray-500 hover:text-gray-700', 'border-green-500 text-green-600');
-            
-            currentTab = tabName;
-        }
-
-        function updateStatus(status, shop) {
-            const statusEl = document.getElementById('shop-status');
-            const colors = {
-                connecting: 'bg-yellow-400',
-                connected: 'bg-green-400', 
-                error: 'bg-red-400'
-            };
-            
-            statusEl.innerHTML = `
-                <div class="w-3 h-3 ${colors[status]} rounded-full"></div>
-                <span class="text-sm text-gray-600">${shop}</span>
-            `;
-        }
-
-        function displayProducts(products) {
-            // On n'affiche plus la liste, mais on met à jour les stats
-            console.log('📊 Mise à jour des statistiques:', { totalProducts: products.length });
-        }
-
-        function updateStats(products) {
-            const withSku = products.filter(p => p.variants?.[0]?.sku);
-            const withoutSku = products.filter(p => !p.variants?.[0]?.sku);
-            const syncSuccess = syncResults.filter(r => r.syncStatus === 'success').length;
-            
-            document.getElementById('total-products').textContent = products.length;
-            document.getElementById('with-sku').textContent = withSku.length;
-            document.getElementById('without-sku').textContent = withoutSku.length;
-            document.getElementById('sync-success').textContent = syncSuccess;
-            document.getElementById('last-sync').textContent = syncResults.length > 0 ? 'Récente' : 'Jamais';
-        }
-
-        // 🔍 Nouvelles fonctions de recherche rapide
-        let allShopifyProducts = []; // Cache de tous les produits
-        
-        async function searchProducts() {
-            const searchTerm = document.getElementById('product-search-input').value.trim();
-            
-            if (!searchTerm || searchTerm.length < 2) {
-                alert('🔍 Veuillez saisir au moins 2 caractères pour la recherche');
-                return;
-            }
-            
-            showSearchLoading();
-            
-            try {
-                // 🔍 NOUVELLE APPROCHE : Recherche directe via API avec le terme
-                console.log(`🔍 Recherche directe pour: "${searchTerm}"`);
-                
-                const searchResponse = await fetch(
-                    `/api/products/search?shop=${encodeURIComponent(currentShop)}&q=${encodeURIComponent(searchTerm)}`,
-                    { method: 'GET' }
-                );
-                
-                if (!searchResponse.ok) {
-                    throw new Error(`Erreur de recherche: ${searchResponse.status}`);
-                }
-                
-                const searchData = await searchResponse.json();
-                console.log(`✅ Recherche API terminée:`, { 
-                    success: searchData.success, 
-                    resultCount: searchData.products?.length || 0 
-                });
-                
-                if (searchData.success && searchData.products) {
-                    displaySearchResults(searchData.products, searchTerm);
-                } else {
-                    throw new Error(searchData.error || 'Aucun résultat trouvé');
-                }
-                
-            } catch (error) {
-                console.error('❌ Erreur recherche:', error);
-                hideSearchLoading();
-                alert('❌ Erreur lors de la recherche: ' + error.message);
-            }
-        }
-        
-        function displaySearchResults(products, searchTerm) {
-            hideSearchLoading();
-            
-            const resultsContainer = document.getElementById('search-results');
-            const resultsList = document.getElementById('search-results-list');
-            const resultsCount = document.getElementById('results-count');
-            const searchCounter = document.getElementById('search-counter');
-            
-            // Mettre à jour les compteurs
-            if (resultsCount) {
-                resultsCount.textContent = `${products.length} produit(s)`;
-            }
-            if (searchCounter) {
-                searchCounter.textContent = `${products.length} résultats`;
-                searchCounter.classList.remove('hidden');
-            }
-            
-            if (products.length === 0) {
-                resultsList.innerHTML = `
-                    <div class="p-8 text-center bg-gray-50">
-                        <div class="text-6xl mb-4">🔍</div>
-                        <div class="text-xl font-semibold text-gray-700 mb-2">Aucun produit trouvé</div>
-                        <div class="text-gray-500 mb-4">Essayez avec d'autres mots-clés pour "<span class="font-semibold">${searchTerm}</span>"</div>
-                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
-                            <div class="text-sm text-blue-800">
-                                <strong>📝 Suggestions :</strong><br>
-                                • Vérifiez l'orthographe<br>
-                                • Utilisez des termes plus généraux<br>
-                                • Essayez avec le SKU/référence exact
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else {
-                const limitedProducts = products.slice(0, 20); // Limite à 20 résultats
-                
-                resultsList.innerHTML = limitedProducts.map((product, index) => {
-                    const totalStock = product.variants?.reduce((total, v) => total + (v.inventory_quantity || 0), 0) || 0;
-                    const hasSku = product.variants?.[0]?.sku;
-                    const stockColor = totalStock > 0 ? 'text-green-600' : 'text-red-600';
-                    const stockIcon = totalStock > 0 ? '📦' : '📭';
-                    
-                    return `
-                    <div class="hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 group">
-                        <div class="p-6 flex items-center justify-between">
-                            <div class="flex-1">
-                                <div class="flex items-start justify-between mb-3">
-                                    <h4 class="font-bold text-lg text-gray-900 group-hover:text-blue-800 transition-colors line-clamp-2">${product.title}</h4>
-                                    <div class="ml-4 text-xs text-gray-400 font-mono">#${index + 1}</div>
-                                </div>
-                                
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-blue-600">🆔</span>
-                                        <span class="text-sm font-mono text-gray-600">${product.id}</span>
-                                    </div>
-                                    
-                                    <div class="flex items-center space-x-2">
-                                        ${hasSku ? `
-                                            <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold flex items-center">
-                                                <span class="mr-1">🏷️</span>
-                                                ${product.variants[0].sku}
-                                            </span>
-                                        ` : `
-                                            <span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold flex items-center">
-                                                <span class="mr-1">⚠️</span>
-                                                Pas de SKU
-                                            </span>
-                                        `}
-                                    </div>
-                                    
-                                    <div class="flex items-center space-x-2">
-                                        <span class="${stockColor}">${stockIcon}</span>
-                                        <span class="text-sm font-semibold ${stockColor}">Stock: ${totalStock}</span>
-                                    </div>
-                                </div>
-                                
-                                <div class="text-xs text-gray-500">
-                                    ${product.variants?.length || 0} variante(s) • 
-                                    Créé le ${new Date(product.created_at).toLocaleDateString('fr-FR')}
-                                </div>
-                            </div>
-                            
-                            <div class="ml-6 flex flex-col space-y-2">
-                                ${hasSku ? `
-                                    <button 
-                                        onclick="syncProductFromSearch(${product.id}, '${product.title.replace(/'/g, "\\'")}')"
-                                        class="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-xl hover:from-green-600 hover:to-emerald-700 font-semibold transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-1 group">
-                                        <svg class="w-5 h-5 mr-2 group-hover:animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                        </svg>
-                                        <span class="hidden sm:inline">Synchroniser</span>
-                                        <span class="sm:hidden">Sync</span>
-                                    </button>
-                                    <button 
-                                        onclick="updateProductSKU(${product.id}, '${product.title.replace(/'/g, "\'")}')"  
-                                        class="bg-gradient-to-r from-orange-500 to-red-600 text-white px-4 py-2 rounded-lg hover:from-orange-600 hover:to-red-700 font-medium transition-all duration-200 flex items-center shadow-md hover:shadow-lg mb-2">
-                                        <span class="mr-1">🔧</span>
-                                        <span class="hidden sm:inline text-sm">MAJ SKU</span>
-                                        <span class="sm:hidden text-xs">SKU</span>
-                                    </button>
-                                ` : `
-                                    <button 
-                                        onclick="updateProductSKU(${product.id}, '${product.title.replace(/'/g, "\'")}')"  
-                                        class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-indigo-700 font-semibold transition-all duration-200 flex items-center shadow-lg hover:shadow-xl transform hover:-translate-y-1 mb-2">
-                                        <span class="mr-2">🏷️</span>
-                                        <span class="hidden sm:inline">Ajouter SKU</span>
-                                        <span class="sm:hidden">SKU</span>
-                                    </button>
-                                `}
-                                
-                                <button 
-                                    onclick="viewProductDetails(${product.id})"
-                                    class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 font-medium transition-all duration-200 flex items-center">
-                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                    </svg>
-                                    <span class="text-xs">Voir</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `}).join('');
-                
-                if (products.length > 20) {
-                    resultsList.innerHTML += `
-                        <div class="p-4 bg-blue-50 text-center text-blue-800">
-                            📊 ${products.length - 20} autres produits trouvés. Affinez votre recherche pour voir plus de résultats.
-                        </div>
-                    `;
-                }
-            }
-            
-            resultsContainer.classList.remove('hidden');
-        }
-        
-        // 🔍 Nouvelle fonction pour vider la recherche
-        function clearSearch() {
-            const searchInput = document.getElementById('product-search-input');
-            const resultsContainer = document.getElementById('search-results');
-            const searchCounter = document.getElementById('search-counter');
-            
-            if (searchInput) {
-                searchInput.value = '';
-                searchInput.focus();
-            }
-            
-            if (resultsContainer) {
-                resultsContainer.classList.add('hidden');
-            }
-            
-            if (searchCounter) {
-                searchCounter.classList.add('hidden');
-            }
-            
-            console.log('🧹 Recherche vidée');
-        }
-        
-        // 👁️ Nouvelle fonction pour voir les détails d'un produit
-        function viewProductDetails(productId) {
-            const product = allShopifyProducts.find(p => p.id == productId);
-            if (!product) {
-                alert('❌ Produit non trouvé');
-                return;
-            }
-            
-            const variants = product.variants || [];
-            const totalStock = variants.reduce((total, v) => total + (v.inventory_quantity || 0), 0);
-            
-            const detailsHtml = `
-                📦 Produit: ${product.title}
-                🆔 ID: ${product.id}
-                🏷️ SKU: ${variants[0]?.sku || 'Non défini'}
-                📊 Stock total: ${totalStock}
-                🔢 Variantes: ${variants.length}
-                📅 Créé le: ${new Date(product.created_at).toLocaleDateString('fr-FR')}
-                💰 Prix: ${variants[0]?.price || 'N/A'} €
-                
-                Variantes:
-                ${variants.map((v, i) => `
-                • Variante ${i + 1}: ${v.title || 'Sans titre'}
-                  SKU: ${v.sku || 'Non défini'}
-                  Stock: ${v.inventory_quantity || 0}
-                  Prix: ${v.price || 'N/A'} €`).join('')}
-            `;
-            
-            alert(detailsHtml);
-        }
-        
-        async function syncProductFromSearch(productId, productTitle) {
-            if (!confirm(`🔄 Synchroniser le produit "${productTitle}" avec Kimland ?`)) {
-                return;
-            }
-            
-            try {
-                // Utiliser la fonction existante
-                await syncProductInventory(productId);
-                
-                // Actualiser la recherche pour voir les changements
-                await searchProducts();
-                
-            } catch (error) {
-                console.error('❌ Erreur sync depuis recherche:', error);
-            }
-        }
-        
-        function showSearchLoading() {
-            document.getElementById('search-loading').classList.remove('hidden');
-            document.getElementById('search-results').classList.add('hidden');
-        }
-        
-        function hideSearchLoading() {
-            document.getElementById('search-loading').classList.add('hidden');
-        }
-        
-        // Recherche en temps réel avec délai
-        let searchTimeout;
+        // Real-time search
         document.addEventListener('DOMContentLoaded', function() {
             const searchInput = document.getElementById('product-search-input');
+            const searchContainer = document.querySelector('.search-container');
+            
             if (searchInput) {
                 searchInput.addEventListener('input', function() {
-                    clearTimeout(searchTimeout);
                     const value = this.value.trim();
                     
-                    if (value.length >= 3) {
+                    clearTimeout(searchTimeout);
+                    
+                    if (value.length >= 2) {
+                        showTypingIndicator();
                         searchTimeout = setTimeout(() => {
                             searchProducts();
-                        }, 500); // Attendre 500ms après la dernière saisie
+                        }, 600);
                     } else if (value.length === 0) {
-                        // Cacher les résultats si le champ est vide
+                        hideTypingIndicator();
                         document.getElementById('search-results').classList.add('hidden');
                     }
+                });
+                
+                searchInput.addEventListener('focus', function() {
+                    searchContainer.classList.add('focused');
+                });
+                
+                searchInput.addEventListener('blur', function() {
+                    searchContainer.classList.remove('focused');
                 });
                 
                 searchInput.addEventListener('keypress', function(e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
+                        clearTimeout(searchTimeout);
                         searchProducts();
                     }
                 });
             }
         });
-        
-        async function syncProductInventory(productId) {
+
+        function showTypingIndicator() {
+            document.getElementById('typing-indicator').classList.add('active');
+        }
+
+        function hideTypingIndicator() {
+            document.getElementById('typing-indicator').classList.remove('active');
+        }
+
+        async function searchProducts() {
+            const searchTerm = document.getElementById('product-search-input').value.trim();
+            if (!searchTerm || searchTerm.length < 2) return;
+            
+            hideTypingIndicator();
+            showSearchLoading();
+            
             try {
-                console.log('📦 Début sync produit:', { productId, shop: currentShop });
+                const response = await fetch(`/api/products/search?shop=${encodeURIComponent(currentShop)}&q=${encodeURIComponent(searchTerm)}`);
+                const data = await response.json();
                 
-                const response = await fetch(`/api/sync/product/${productId}?shop=${encodeURIComponent(currentShop)}`, {
-                    method: 'POST'
-                });
-                
-                console.log('📡 Réponse sync produit:', { ok: response.ok, status: response.status });
-                
-                const result = await response.json();
-                console.log('📥 Données sync produit:', result);
-                
-                if (result.success) {
-                    console.log('✅ Sync produit réussie:', result);
-                    alert(`Stock synchronisé avec succès!\nSKU: ${result.syncResult?.sku}\nStock Kimland: ${result.kimlandStock}\nStock mis à jour sur Shopify: ${result.updatedQuantity}`);
-                    loadDashboard();
+                if (data.success && data.products) {
+                    displaySearchResults(data.products);
                 } else {
-                    console.error('❌ Sync produit échouée:', result);
-                    
-                    // Afficher détails de l'erreur si c'est une erreur d'auth Kimland
-                    let errorMsg = result.error || 'Erreur inconnue';
-                    if (result.syncResult?.errorMessage) {
-                        errorMsg += '\nDétail: ' + result.syncResult.errorMessage;
-                    }
-                    
-                    alert(`❌ Erreur de synchronisation: ${errorMsg}\n\nDébogage: ${JSON.stringify(result.syncResult, null, 2)}`);
-                    
-                    // Si c'est une erreur d'auth, vérifier le statut Kimland
-                    if (result.syncResult?.errorMessage?.includes('authentification')) {
-                        console.log('🔍 Erreur auth détectée, vérification statut Kimland');
-                        checkKimlandStatusDetailed();
-                    }
+                    throw new Error('Aucun résultat trouvé');
                 }
             } catch (error) {
-                console.error('❌ Erreur réseau sync produit:', error);
-                alert('❌ Erreur de connexion lors de la synchronisation: ' + error.message);
+                hideSearchLoading();
+                showNoResults();
+            }
+        }
+
+        function displaySearchResults(products) {
+            hideSearchLoading();
+            document.getElementById('results-count').textContent = `${products.length} produit(s)`;
+            
+            const resultsList = document.getElementById('search-results-list');
+            resultsList.innerHTML = products.slice(0, 8).map(product => {
+                const hasSku = product.variants?.[0]?.sku;
+                const totalStock = product.variants?.reduce((total, v) => total + (v.inventory_quantity || 0), 0) || 0;
+                
+                return `
+                <div class="p-4 hover:bg-gray-50 transition-colors">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1 pr-4">
+                            <h4 class="font-medium text-gray-900 mb-1">${product.title}</h4>
+                            <div class="flex items-center space-x-4 text-sm text-gray-600">
+                                <span>ID: ${product.id}</span>
+                                ${hasSku ? `<span class="text-green-600">SKU: ${product.variants[0].sku}</span>` : `<span class="text-red-500">Pas de SKU</span>`}
+                                <span class="${totalStock > 0 ? 'text-green-600' : 'text-red-500'}">Stock: ${totalStock}</span>
+                            </div>
+                        </div>
+                        <div class="flex space-x-2">
+                            ${hasSku ? `
+                                <button onclick="syncProductFromSearch(${product.id})" class="btn px-3 py-1 text-sm text-green-600 hover:text-green-700">🔄 Sync</button>
+                                <button onclick="updateProductSKU(${product.id})" class="btn px-3 py-1 text-sm text-blue-600 hover:text-blue-700">🔧 MAJ SKU</button>
+                            ` : `
+                                <button onclick="updateProductSKU(${product.id})" class="btn px-3 py-1 text-sm text-blue-600 hover:text-blue-700">🏷️ Ajouter SKU</button>
+                            `}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            
+            document.getElementById('search-results').classList.remove('hidden');
+        }
+
+        function showNoResults() {
+            document.getElementById('search-results-list').innerHTML = '<div class="p-8 text-center text-gray-500">Aucun produit trouvé</div>';
+            document.getElementById('results-count').textContent = '0 produit(s)';
+            document.getElementById('search-results').classList.remove('hidden');
+        }
+
+        function showSearchLoading() {
+            document.getElementById('search-loading').classList.remove('hidden');
+            document.getElementById('search-results').classList.add('hidden');
+        }
+
+        function hideSearchLoading() {
+            document.getElementById('search-loading').classList.add('hidden');
+        }
+        
+        // Progress Toast Functions
+        function showProgressToast(title, message) {
+            document.getElementById('toast-title').textContent = title;
+            document.getElementById('toast-message').textContent = message;
+            document.getElementById('toast-progress-fill').style.width = '0%';
+            document.getElementById('progress-toast').classList.add('show');
+        }
+        
+        function updateProgressToast(message, progress) {
+            if (message) document.getElementById('toast-message').textContent = message;
+            if (progress !== undefined) document.getElementById('toast-progress-fill').style.width = progress + '%';
+        }
+        
+        function hideProgressToast() {
+            document.getElementById('progress-toast').classList.remove('show');
+        }
+        
+        function showSuccessToast(message) {
+            document.getElementById('toast-title').textContent = '✅ Succès';
+            document.getElementById('toast-message').textContent = message;
+            document.getElementById('toast-progress-fill').style.width = '100%';
+            document.getElementById('progress-toast').classList.add('show');
+            setTimeout(() => hideProgressToast(), 3000);
+        }
+
+        async function updateAllSKU() {
+            if (!confirm('Mettre à jour tous les SKU depuis Kimland ?')) return;
+            
+            showProgressToast('🏷️ Mise à jour SKU', 'Préparation de la mise à jour...');
+            
+            try {
+                const response = await fetch(`/api/products/update-all-sku?shop=${encodeURIComponent(currentShop)}`, { method: 'POST' });
+                const result = await response.json();
+                
+                updateProgressToast('Finalisation...', 90);
+                
+                if (result.success) {
+                    updateProgressToast('Terminé !', 100);
+                    setTimeout(() => {
+                        showSuccessToast(`${result.updated} SKU mis à jour, ${result.skipped} ignorés`);
+                    }, 500);
+                } else {
+                    hideProgressToast();
+                    alert('Erreur: ' + result.error);
+                }
+            } catch (error) {
+                hideProgressToast();
+                alert('Erreur de connexion');
             }
         }
 
         async function syncAllInventory() {
-            if (!confirm('Synchroniser l\'inventaire de tous les produits avec Kimland ?')) {
-                return;
-            }
-
-            // Réinitialiser les variables d'arrêt
+            if (!confirm('Synchroniser tous les stocks depuis Kimland ?')) return;
             isSyncCancelled = false;
             syncAbortController = new AbortController();
-
             showSyncModal();
             
             try {
                 const response = await fetch(`/api/sync/inventory/all?shop=${encodeURIComponent(currentShop)}`, {
-                    method: 'POST',
-                    signal: syncAbortController.signal // Ajouter le signal d'arrêt
+                    method: 'POST', signal: syncAbortController.signal
                 });
                 
-                if (!response.ok) {
-                    throw new Error('Erreur de synchronisation');
-                }
-
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
-
                 let buffer = '';
+                
                 while (true) {
-                    // Vérifier l'annulation avant chaque lecture
-                    if (isSyncCancelled) {
-                        console.log('🚫 Arrêt de la lecture demandé');
-                        reader.cancel(); // Annuler la lecture du stream
-                        break;
-                    }
-                    
+                    if (isSyncCancelled) { reader.cancel(); break; }
                     const { done, value } = await reader.read();
                     if (done) break;
 
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
-                    buffer = lines.pop(); // Garder la ligne incomplète
+                    buffer = lines.pop();
 
                     for (const line of lines) {
                         if (line.trim()) {
                             try {
                                 const data = JSON.parse(line);
                                 updateSyncProgress(data);
-                                
-                                // Arrêter si on reçoit un message d'annulation
-                                if (data.type === 'cancelled') {
-                                    console.log('🚫 Synchronisation annulée par le serveur');
-                                    isSyncCancelled = true;
-                                    break;
-                                }
-                            } catch (e) {
-                                console.log('Non-JSON line:', line);
-                            }
+                                if (data.type === 'cancelled') { isSyncCancelled = true; break; }
+                            } catch (e) {}
                         }
                     }
-                    
                     if (isSyncCancelled) break;
                 }
-
-                // Traiter la dernière ligne si elle existe
-                if (buffer.trim() && !isSyncCancelled) {
-                    try {
-                        const data = JSON.parse(buffer);
-                        updateSyncProgress(data);
-                    } catch (e) {
-                        console.log('Non-JSON final line:', buffer);
-                    }
-                }
-
             } catch (error) {
                 if (error.name === 'AbortError') {
-                    console.log('🚫 Synchronisation annulée par l\'utilisateur');
-                    updateSyncStatus('🚫 Synchronisation arrêtée par l\'utilisateur');
+                    updateSyncStatus('Synchronisation arrêtée');
                 } else {
-                    console.error('Erreur sync globale:', error);
-                    updateSyncStatus('Erreur de synchronisation: ' + error.message);
+                    updateSyncStatus('Erreur: ' + error.message);
                 }
             } finally {
-                // Nettoyer après la synchronisation
                 syncAbortController = null;
                 hideCancelButton();
             }
         }
 
-        function showSyncModal() {
-            document.getElementById('sync-modal').style.display = 'block';
-            document.getElementById('sync-progress-bar').style.width = '0%';
-            document.getElementById('sync-status').textContent = 'Préparation...';
-            document.getElementById('sync-results').innerHTML = '';
-            
-            // Masquer les éléments d'arrêt initialement
-            hideCancelButton();
-            hideCancelInfo();
-        }
-
-        function closeSyncModal() {
-            // Si une synchronisation est en cours, demander confirmation
-            if (syncAbortController && !isSyncCancelled) {
-                if (confirm('🚫 Voulez-vous vraiment arrêter la synchronisation en cours ?')) {
-                    cancelSync();
-                } else {
-                    return; // Ne pas fermer si l'utilisateur annule
-                }
-            }
-            
-            document.getElementById('sync-modal').style.display = 'none';
-            loadDashboard(); // Recharger les données
-        }
-
-function updateSyncProgress(data) {
-console.log('📊 Progrès sync reçu:', data);
-
-if (data.type === 'info') {
-updateSyncStatus(`ℹ️ ${data.message}`);
-    
-// Afficher le bouton d'arrêt si la synchronisation peut être annulée
-if (data.canCancel) {
-    showCancelButton();
-}
-
-} else if (data.type === 'progress') {
-const progress = data.percentage || Math.round((data.current / data.total) * 100);
-
-// 📊 Mise à jour de la barre de progression
-const progressBar = document.getElementById('sync-progress-bar');
-if (progressBar) {
-progressBar.style.width = progress + '%';
-progressBar.style.transition = 'width 0.3s ease';
-}
-
-// 📝 Mise à jour du status avec plus de détails
-    updateSyncStatus(`
-    🔄 ${data.message} 
-    <br><small>${data.current}/${data.total} (${progress}%)</small>
-    ${data.productName ? `<br><small>📦 ${data.productName}</small>` : ''}
-`);
-
-// Afficher le bouton d'arrêt si possible
-if (data.canCancel) {
-    showCancelButton();
-}
-
-} else if (data.type === 'result') {
-const resultDiv = document.getElementById('sync-results');
-if (!resultDiv) return;
-
-const timestamp = new Date(data.timestamp).toLocaleTimeString();
-const statusClass = data.success ? 'text-green-600' : 'text-red-600';
-const statusIcon = data.success ? '✅' : '❌';
-
-// 🎨 HTML amélioré pour les résultats
-const resultHtml = `
-<div class="sync-result-item border-l-4 ${data.success ? 'border-green-400' : 'border-red-400'} pl-3 py-2 mb-2 bg-gray-50 rounded">
-<div class="flex justify-between items-start">
-<div class="flex-1">
-<div class="flex items-center">
-    <span class="${statusClass} text-lg mr-2">${statusIcon}</span>
-        <strong class="text-sm">${data.sku}</strong>
-            <span class="text-xs text-gray-500 ml-2">${timestamp}</span>
-            </div>
-                ${data.productName ? `<div class="text-xs text-gray-600 ml-6">${data.productName}</div>` : ''}
-                <div class="text-sm ml-6 ${statusClass}">${data.message}</div>
-                ${data.kimlandStock !== undefined ? `
-                    <div class="text-xs text-blue-600 ml-6">
-                        📦 Stock: ${data.kimlandStock} 
-                            ${data.variantsCount ? `| ${data.variantsCount} variante(s)` : ''}
-                    </div>
-                ` : ''}
-            </div>
-        </div>
-    </div>
-`;
-
-resultDiv.insertAdjacentHTML('beforeend', resultHtml);
-resultDiv.scrollTop = resultDiv.scrollHeight;
-
-} else if (data.type === 'cancelled') {
-// 🚫 Synchronisation annulée
-updateSyncStatus(`
-    🚫 <strong>Synchronisation arrêtée!</strong>
-<br>Arrêtée à l'étape ${data.stoppedAt || 0}
-`);
-
-hideCancelButton();
-showCancelInfo('Synchronisation arrêtée par l\'utilisateur');
-
-// 🔔 Notification
-if ('Notification' in window && Notification.permission === 'granted') {
-new Notification('Synchronisation arrêtée', {
-        body: `Synchronisation interrompue à l'étape ${data.stoppedAt || 0}`,
-        icon: '/favicon.ico'
-        });
-}
-
-} else if (data.type === 'complete') {
-        // 🏁 Finalisation avec statistiques détaillées
-                const successRate = data.successRate || 0;
-                const duration = Math.round((data.duration || 0) / 1000);
-                
-                updateSyncStatus(`
-                    🏁 <strong>Synchronisation terminée!</strong>
-                    <br>✅ ${data.successful} réussies 
-                    <br>❌ ${data.failed} échecs 
-                    <br>📊 Taux de réussite: ${successRate}%
-                    <br>⏱️ Durée: ${duration}s
-                `);
-                
+        function updateSyncProgress(data) {
+            if (data.type === 'progress') {
+                const progress = data.percentage || Math.round((data.current / data.total) * 100);
+                document.getElementById('sync-progress-bar').style.width = progress + '%';
+                updateSyncStatus(`${data.message} (${progress}%)`);
+                showCancelButton();
+            } else if (data.type === 'result') {
+                const resultDiv = document.getElementById('sync-results');
+                const statusColor = data.success ? 'text-green-600' : 'text-red-600';
+                const statusIcon = data.success ? '✓' : '×';
+                resultDiv.insertAdjacentHTML('beforeend', 
+                    `<div class="mb-2 text-sm"><span class="${statusColor} font-medium">${statusIcon}</span> ${data.sku} - ${data.message}</div>`
+                );
+                resultDiv.scrollTop = resultDiv.scrollHeight;
+            } else if (data.type === 'complete') {
+                updateSyncStatus(`Terminé: ${data.successful} réussies, ${data.failed} échecs`);
                 hideCancelButton();
-                
-                // 🔔 Notification système si disponible
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification('Synchronisation terminée', {
-                        body: `${data.successful}/${data.total} produits synchronisés avec succès`,
-                        icon: '/favicon.ico'
-                    });
-                }
-                
-                // 📊 Mettre à jour les statistiques du dashboard
-                setTimeout(() => {
-                    loadDashboard();
-                }, 2000);
-                
-            } else if (data.type === 'error') {
-                updateSyncStatus(`💥 <strong>Erreur critique:</strong><br>${data.message}`);
-                hideCancelButton();
-                console.error('Erreur sync critique:', data);
             }
         }
 
-function updateSyncStatus(html) {
-const statusEl = document.getElementById('sync-status');
-if (statusEl) {
-statusEl.innerHTML = html;
-}
-}
-
-        // 🚫 Nouvelles fonctions pour gérer l'arrêt de synchronisation
-        function cancelSync() {
-            console.log('🚫 cancelSync() appelée - Début de la fonction');
-            
-            if (!syncAbortController || isSyncCancelled) {
-                console.log('⚠️ Aucune synchronisation à annuler', { 
-                    hasSyncAbortController: !!syncAbortController, 
-                    isSyncCancelled 
-                });
-                return;
-            }
-            
-            console.log('🚫 Début annulation synchronisation');
-            isSyncCancelled = true;
-            
-            // Annuler la requête HTTP
-            if (syncAbortController) {
-                console.log('🚫 Appel de syncAbortController.abort()');
-                syncAbortController.abort();
-                syncAbortController = null;
-            }
-            
-            // Afficher le message d'arrêt
-            showCancelInfo('Arrêt en cours... Finalisation des opérations actuelles.');
-            
-            // Désactiver le bouton
-            const cancelBtn = document.getElementById('cancel-sync-btn');
-            if (cancelBtn) {
-                cancelBtn.disabled = true;
-                cancelBtn.innerHTML = '⏳ Arrêt...';
-                console.log('🚫 Bouton désactivé et texte changé');
-            } else {
-                console.error('❌ Bouton cancel-sync-btn non trouvé!');
-            }
-            
-            updateSyncStatus('🚫 Arrêt de la synchronisation en cours...');
-            console.log('🚫 Fin de cancelSync()');
-        }
-        
-        function showCancelButton() {
-            console.log('🚫 showCancelButton() appelée');
-            const cancelBtn = document.getElementById('cancel-sync-btn');
-            if (cancelBtn && !isSyncCancelled) {
-                cancelBtn.style.display = 'inline-block';
-                cancelBtn.disabled = false;
-                cancelBtn.innerHTML = '🚫 Arrêter';
-                console.log('✅ Bouton d\'arrêt affiché');
-            } else {
-                console.log('⚠️ Bouton non affiché:', { 
-                    hasBtn: !!cancelBtn, 
-                    isSyncCancelled 
-                });
-            }
-        }
-        
-        function hideCancelButton() {
-            const cancelBtn = document.getElementById('cancel-sync-btn');
-            if (cancelBtn) {
-                cancelBtn.style.display = 'none';
-            }
-        }
-        
-        function showCancelInfo(message) {
-            const cancelInfo = document.getElementById('cancel-info');
-            if (cancelInfo) {
-                cancelInfo.style.display = 'block';
-                const messageSpan = cancelInfo.querySelector('.text-yellow-800');
-                if (messageSpan) {
-                    messageSpan.textContent = message;
-                }
-            }
-        }
-        
-        function hideCancelInfo() {
-            const cancelInfo = document.getElementById('cancel-info');
-            if (cancelInfo) {
-                cancelInfo.style.display = 'none';
-            }
-        }
-
-// 🔔 Demander permission pour notifications
-window.addEventListener('load', () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
-    }
-});
-
-        async function loadSyncHistory() {
-            try {
-                const response = await fetch(`/api/sync/history?shop=${encodeURIComponent(currentShop)}`);
-                const historyData = await response.json();
-                
-                if (historyData.success && historyData.history.length > 0) {
-                    const container = document.getElementById('sync-history-list');
-                    container.innerHTML = historyData.history.map(sync => `
-                        <div class="px-6 py-4">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <p class="text-sm font-medium text-gray-900">
-                                        ${new Date(sync.date).toLocaleString('fr-FR')}
-                                    </p>
-                                    <p class="text-xs text-gray-500">
-                                        ${sync.successful} réussies, ${sync.failed} échecs
-                                    </p>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm ${sync.status === 'completed' ? 'text-green-600' : 'text-red-600'}">
-                                        ${sync.status === 'completed' ? '✅ Terminé' : '❌ Erreur'}
-                                    </div>
-                                    <div class="text-xs text-gray-400">
-                                        ${sync.duration}ms
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            } catch (error) {
-                console.error('Erreur chargement historique:', error);
-            }
-        }
-
-        // Fonction de mise à jour du statut Kimland
-        function updateKimlandStatus(status, message, details = null) {
-            console.log('🔄 Mise à jour statut Kimland:', { status, message, details });
-            
-            const banner = document.getElementById('kimland-connection-banner');
-            const icon = document.getElementById('kimland-connection-icon');
-            const statusEl = document.getElementById('kimland-connection-status');
-            const detailsEl = document.getElementById('kimland-connection-details');
-            const statEl = document.getElementById('kimland-status');
-            
-            // Mise à jour des couleurs et icônes
-            const configs = {
-                connected: {
-                    bannerClass: 'border-green-400',
-                    iconClass: 'w-4 h-4 bg-green-400 rounded-full mr-3',
-                    stat: '🟢 OK'
-                },
-                error: {
-                    bannerClass: 'border-red-400',
-                    iconClass: 'w-4 h-4 bg-red-400 rounded-full mr-3',
-                    stat: '🔴 KO'
-                },
-                checking: {
-                    bannerClass: 'border-orange-400',
-                    iconClass: 'w-4 h-4 bg-orange-400 rounded-full mr-3 animate-pulse',
-                    stat: '🟡 ...'
-                },
-                disconnected: {
-                    bannerClass: 'border-red-400',
-                    iconClass: 'w-4 h-4 bg-red-400 rounded-full mr-3',
-                    stat: '⚫ OFF'
-                }
-            };
-            
-            const config = configs[status] || configs.error;
-            
-            // Mettre à jour l'apparence
-            banner.className = `bg-white rounded-lg shadow mb-6 border-l-4 ${config.bannerClass}`;
-            icon.className = config.iconClass;
-            statusEl.textContent = message;
-            statEl.textContent = config.stat;
-            
-            // Afficher les détails si disponibles
-            if (details) {
-                detailsEl.innerHTML = `
-                    <div class="bg-gray-50 p-2 rounded mt-2">
-                        <pre class="text-xs">${JSON.stringify(details, null, 2)}</pre>
-                    </div>
-                `;
-                detailsEl.style.display = 'block';
-            } else {
-                detailsEl.style.display = 'none';
-            }
-        }
-
-        async function checkKimlandStatusDetailed() {
-            try {
-                console.log('🔍 Début vérification statut Kimland détaillée');
-                updateKimlandStatus('checking', 'Vérification connexion Kimland...');
-                
-                const response = await fetch('/api/kimland/status');
-                console.log('📡 Réponse API kimland/status:', { 
-                    ok: response.ok, 
-                    status: response.status, 
-                    statusText: response.statusText 
-                });
-                
-                const statusData = await response.json();
-                console.log('📥 Données statut Kimland:', statusData);
-                
-                // Mise à jour des éléments de l'interface
-                const indicator = document.getElementById('kimland-status-indicator');
-                const text = document.getElementById('kimland-status-text');
-                
-                if (statusData.connected) {
-                    console.log('✅ Kimland connecté');
-                    updateKimlandStatus('connected', `Connecté depuis ${statusData.timestamp ? new Date(statusData.timestamp).toLocaleTimeString() : 'maintenant'}`, statusData);
-                    
-                    if (indicator) {
-                        indicator.className = 'w-3 h-3 bg-green-400 rounded-full mr-2';
-                    }
-                    if (text) {
-                        text.textContent = 'Connecté';
-                    }
-                } else {
-                    console.log('❌ Kimland déconnecté:', statusData.error);
-                    updateKimlandStatus('disconnected', `Déconnecté: ${statusData.error || 'Raison inconnue'}`, statusData);
-                    
-                    if (indicator) {
-                        indicator.className = 'w-3 h-3 bg-red-400 rounded-full mr-2';
-                    }
-                    if (text) {
-                        text.textContent = 'Déconnecté';
-                    }
-                }
-                
-            } catch (error) {
-                console.error('❌ Erreur vérification Kimland:', error);
-                updateKimlandStatus('error', `Erreur de vérification: ${error.message}`, { error: error.toString() });
-                
-                const indicator = document.getElementById('kimland-status-indicator');
-                const text = document.getElementById('kimland-status-text');
-                
-                if (indicator) {
-                    indicator.className = 'w-3 h-3 bg-red-400 rounded-full mr-2';
-                }
-                if (text) {
-                    text.textContent = 'Erreur de vérification';
-                }
-            }
-        }
-
-        async function testKimlandConnection() {
-            try {
-                console.log('🔗 Début test connexion Kimland');
-                updateKimlandStatus('checking', 'Test de connexion en cours...');
-                
-                const response = await fetch('/api/kimland/test', { method: 'POST' });
-                console.log('📡 Réponse test Kimland:', { ok: response.ok, status: response.status });
-                
-                const testData = await response.json();
-                console.log('📥 Données test Kimland:', testData);
-                
-                if (testData.success) {
-                    console.log('✅ Test connexion Kimland réussi');
-                    updateKimlandStatus('connected', 'Test réussi - Connexion opérationnelle', testData);
-                    alert('✅ Connexion Kimland réussie!\n' + JSON.stringify(testData, null, 2));
-                    checkKimlandStatusDetailed();
-                } else {
-                    console.error('❌ Test connexion Kimland échoué:', testData);
-                    updateKimlandStatus('error', `Test échoué: ${testData.error}`, testData);
-                    alert('❌ Erreur de connexion: ' + testData.error + '\nDétails: ' + JSON.stringify(testData, null, 2));
-                }
-            } catch (error) {
-                console.error('❌ Erreur test connexion Kimland:', error);
-                updateKimlandStatus('error', 'Erreur durant le test', { error: error.toString() });
-                alert('❌ Erreur de test de connexion: ' + error.message);
-            }
-        }
-        
-        async function forceReconnectKimland() {
-            if (!confirm('Forcer une reconnexion à Kimland ?\nCela va vider la session actuelle.')) {
-                return;
-            }
+        async function syncProductFromSearch(productId) {
+            showProgressToast('🔄 Synchronisation', 'Synchronisation en cours...');
+            updateProgressToast('Connexion à Kimland...', 25);
             
             try {
-                console.log('🔄 Début reconnexion forcée Kimland');
-                updateKimlandStatus('checking', 'Reconnexion forcée en cours...');
-                
-                // Vider la session actuelle
-                const clearResponse = await fetch('/api/kimland/clear-session', { method: 'POST' });
-                const clearData = await clearResponse.json();
-                console.log('🗑️ Session vidée:', clearData);
-                
-                // Forcer une nouvelle connexion
-                const loginResponse = await fetch('/api/kimland/force-login', { method: 'POST' });
-                const loginData = await loginResponse.json();
-                console.log('🔐 Reconnexion forcée:', loginData);
-                
-                if (loginData.success) {
-                    console.log('✅ Reconnexion Kimland réussie');
-                    updateKimlandStatus('connected', 'Reconnexion réussie', loginData);
-                    alert('✅ Reconnexion Kimland réussie!');
-                    checkKimlandStatusDetailed();
-                } else {
-                    console.error('❌ Reconnexion Kimland échouée:', loginData);
-                    updateKimlandStatus('error', `Reconnexion échouée: ${loginData.error}`, loginData);
-                    alert('❌ Erreur de reconnexion: ' + loginData.error);
-                }
-                
-            } catch (error) {
-                console.error('❌ Erreur reconnexion forcée Kimland:', error);
-                updateKimlandStatus('error', 'Erreur durant la reconnexion', { error: error.toString() });
-                alert('❌ Erreur de reconnexion: ' + error.message);
-            }
-        }
-
-        async function clearKimlandSession() {
-            if (!confirm('Vider la session Kimland ?')) return;
-            
-            try {
-                const response = await fetch('/api/kimland/clear-session', { method: 'POST' });
-                const sessionData = await response.json();
-                
-                if (sessionData.success) {
-                    alert('✅ Session vidée');
-                    checkKimlandStatus();
-                } else {
-                    alert('❌ Erreur: ' + sessionData.error);
-                }
-            } catch (error) {
-                alert('❌ Erreur lors du vidage de session');
-            }
-        }
-
-        function refreshData() {
-            loadDashboard();
-        }
-
-        function exportData() {
-            // TODO: Implémenter l'export
-            alert('Fonctionnalité d\'export bientôt disponible!');
-        }
-
-        // Fonctions de mise à jour SKU
-        async function updateSKU(productId) {
-            try {
-                const response = await fetch(`/api/products/${productId}/update-sku?shop=${encodeURIComponent(currentShop)}`, {
-                    method: 'PUT'
-                });
-                
+                const response = await fetch(`/api/sync/product/${productId}?shop=${encodeURIComponent(currentShop)}`, { method: 'POST' });
                 const result = await response.json();
                 
+                updateProgressToast('Mise à jour du stock...', 75);
+                
                 if (result.success) {
-                    alert(`SKU mis à jour avec succès: ${result.reference}`);
-                    loadDashboard();
+                    updateProgressToast('Succès !', 100);
+                    setTimeout(() => {
+                        showSuccessToast('Stock synchronisé avec succès');
+                        // NE PAS relancer la recherche, garder les résultats actuels
+                    }, 500);
                 } else {
-                    alert(`Erreur: ${result.error}`);
+                    hideProgressToast();
+                    alert('Erreur: ' + result.error);
                 }
             } catch (error) {
-                alert('Erreur de connexion');
+                hideProgressToast();
+                alert('Erreur: ' + error.message);
             }
         }
 
-        // Nouvelle fonction pour mettre à jour le SKU d'un produit spécifique
-        async function updateProductSKU(productId, productTitle) {
-            if (!confirm(`Mettre à jour le SKU/référence pour "${productTitle}" ?\nCeci va rechercher et appliquer la référence Kimland correspondante.`)) {
-                return;
-            }
+        async function updateProductSKU(productId) {
+            showProgressToast('🏷️ Mise à jour SKU', 'Recherche de la référence...');
+            updateProgressToast('Connexion à Kimland...', 30);
             
             try {
-                console.log('🏷️ Début mise à jour SKU produit:', { productId, productTitle });
-                
-                const response = await fetch(`/api/products/${productId}/update-sku?shop=${encodeURIComponent(currentShop)}`, {
-                    method: 'PUT'
-                });
-                
+                const response = await fetch(`/api/products/${productId}/update-sku?shop=${encodeURIComponent(currentShop)}`, { method: 'PUT' });
                 const result = await response.json();
-                console.log('📥 Résultat mise à jour SKU:', result);
+                
+                updateProgressToast('Application du SKU...', 80);
                 
                 if (result.success) {
-                    alert(`✅ SKU mis à jour avec succès!\nProduit: ${productTitle}\nNouveau SKU: ${result.reference}`);
-                    
-                    // Actualiser la recherche pour voir les changements
-                    await searchProducts();
+                    updateProgressToast('Terminé !', 100);
+                    setTimeout(() => {
+                        showSuccessToast('SKU mis à jour: ' + result.reference);
+                        // NE PAS relancer la recherche, garder les résultats actuels
+                    }, 500);
                 } else {
-                    alert(`❌ Erreur lors de la mise à jour du SKU:\n${result.error}`);
+                    hideProgressToast();
+                    alert('Erreur: ' + result.error);
                 }
             } catch (error) {
-                console.error('❌ Erreur réseau mise à jour SKU:', error);
-                alert('❌ Erreur de connexion lors de la mise à jour du SKU: ' + error.message);
+                hideProgressToast();
+                alert('Erreur: ' + error.message);
             }
         }
 
-        async function updateAllSKU() {
-            if (!confirm('Mettre à jour le SKU de TOUS les produits avec références ?')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/products/update-all-sku?shop=${encodeURIComponent(currentShop)}`, {
-                    method: 'POST'
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert(`Mise à jour terminée:\n- ${result.updated} SKU mis à jour\n- ${result.skipped} produits ignorés`);
-                    loadDashboard();
-                } else {
-                    alert(`Erreur: ${result.error}`);
-                }
-            } catch (error) {
-                alert('Erreur de connexion');
-            }
+        function updateSyncStatus(text) { document.getElementById('sync-status').textContent = text; }
+        function showSyncModal() { 
+            document.getElementById('sync-modal').style.display = 'block'; 
+            document.getElementById('sync-progress-bar').style.width = '0%'; 
+            document.getElementById('sync-status').textContent = 'Initialisation...'; 
+            document.getElementById('sync-results').innerHTML = ''; 
         }
-
-        // Support touche Entrée pour la recherche
-        document.getElementById('search-input')?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const searchTerm = e.target.value.trim();
-                if (searchTerm) {
-                    // TODO: Implémenter la recherche
-                    console.log('Recherche:', searchTerm);
-                }
-            }
-        });
-
-        // Fermer le modal en cliquant à l'extérieur
-        window.onclick = function(event) {
-            const modal = document.getElementById('sync-modal');
-            if (event.target === modal) {
-                closeSyncModal();
-            }
+        function closeSyncModal() { document.getElementById('sync-modal').style.display = 'none'; }
+        function showCancelButton() { document.getElementById('cancel-sync-btn').classList.remove('hidden'); }
+        function hideCancelButton() { document.getElementById('cancel-sync-btn').classList.add('hidden'); }
+        function cancelSync() { 
+            if (syncAbortController) { 
+                syncAbortController.abort(); 
+                isSyncCancelled = true; 
+                document.getElementById('cancel-info').classList.remove('hidden');
+            } 
         }
     </script>
 </body>

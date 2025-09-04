@@ -100,15 +100,16 @@ class OrdersModule {
             console.log('🔄 [DEBUG] EventSource OPEN:', EventSource.OPEN);
             console.log('🔄 [DEBUG] EventSource CLOSED:', EventSource.CLOSED);
             
-            // Si la connexion se ferme, tenter une reconnexion après 5 secondes
+            // Si la connexion se ferme, ne pas reconnecter automatiquement pour l'instant
+            // TODO: Corriger la configuration nginx/proxy pour SSE
             if (eventSource.readyState === EventSource.CLOSED) {
-                console.log('♾️ [DEBUG] Reconnexion dans 5 secondes...');
-                setTimeout(() => {
-                    if (this.eventSource === eventSource) { // Vérifier que c'est toujours notre instance
-                        console.log('♾️ [DEBUG] Tentative de reconnexion...');
-                        this.connectToRealTimeOrders();
-                    }
-                }, 5000);
+                console.log('⚠️ [DEBUG] Connexion SSE fermée - Reconnexion désactivée pour éviter la boucle');
+                // setTimeout(() => {
+                //     if (this.eventSource === eventSource) {
+                //         console.log('♾️ [DEBUG] Tentative de reconnexion...');
+                //         this.connectToRealTimeOrders();
+                //     }
+                // }, 5000);
             }
         };
         

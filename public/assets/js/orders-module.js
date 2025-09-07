@@ -248,7 +248,7 @@ class OrdersModule {
             `<button class="action-btn success" disabled>
                 <span>✓</span> Synchronisé
             </button>` :
-            `<button class="action-btn primary" onclick="window.ordersModule.createClientForOrder('${order.id}')">
+            `<button class="action-btn primary" onclick="window.ordersModule.createClientForOrder(${order.id})">
                 <span>👤</span> Créer Client Kimland
             </button>`;
 

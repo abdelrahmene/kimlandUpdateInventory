@@ -4,6 +4,7 @@ import { shopifyApiService } from '../services/shopify-api.service';
 import { kimlandService } from '../services/kimland/kimland.service';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error.middleware';
+import { broadcastToClients } from './logs.routes';
 
 const router = Router();
 
@@ -113,8 +114,240 @@ router.post('/product/:id', validateShop, requireAuth, asyncHandler(async (req: 
 }));
 
 /**
- * Synchronisation d'inventaire en streaming pour tous les produits avec possibilité d'arrêt
+ * Synchronisation d'inventaire optimisée avec diffusion SSE temps réel
  */
+router.post('/inventory/realtime', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  const shop = req.query.shop as string;
+  const startTime = Date.now();
+  
+  try {
+    const accessToken = req.accessToken!;
+    
+    // Envoyer confirmation de démarrage
+    res.json({
+      success: true,
+      message: 'Synchronisation démarrée en arrière-plan',
+      startTime: new Date().toISOString()
+    });
+    
+    // Démarrer la synchronisation en arrière-plan avec diffusion SSE
+    processInventorySyncWithSSE(shop, accessToken, startTime);
+    
+  } catch (error) {
+    logger.error('❌ Erreur démarrage sync temps réel', { error, shop });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erreur interne du serveur'
+    });
+  }
+}));
+
+/**
+ * Traitement de synchronisation avec diffusion SSE
+ */
+async function processInventorySyncWithSSE(shop: string, accessToken: string, startTime: number) {
+  let successful = 0;
+  let failed = 0;
+  let processed = 0;
+  
+  try {
+    // 📋 Récupérer tous les produits avec SKU
+    broadcastToClients({
+      type: 'sync_progress',
+      shop,
+      message: '📋 Chargement des produits...',
+      current: 0,
+      total: 0,
+      percentage: 0,
+      timestamp: new Date().toISOString()
+    });
+
+    const products = await shopifyApiService.getAllProducts(shop, accessToken);
+    const productsWithSku = products.filter(p => p.variants?.[0]?.sku);
+    
+    if (productsWithSku.length === 0) {
+      broadcastToClients({
+        type: 'sync_complete',
+        shop,
+        message: '⚠️ Aucun produit avec SKU trouvé',
+        successful: 0,
+        failed: 0,
+        total: 0,
+        duration: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    // 📊 Informations initiales
+    broadcastToClients({
+      type: 'sync_started',
+      shop,
+      message: `🚀 Synchronisation démarrée - ${productsWithSku.length} produits`,
+      total: productsWithSku.length,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 🔄 Synchroniser chaque produit avec feedback détaillé
+    for (let i = 0; i < productsWithSku.length; i++) {
+      const product = productsWithSku[i];
+      const sku = product.variants[0].sku!;
+      processed = i + 1;
+      const percentage = Math.round((processed / productsWithSku.length) * 100);
+      
+      try {
+        // 📈 Diffuser le progrès AVANT traitement
+        broadcastToClients({
+          type: 'sync_progress',
+          shop,
+          message: `🔄 Synchronisation ${sku}...`,
+          current: processed,
+          total: productsWithSku.length,
+          percentage,
+          sku,
+          productName: product.title,
+          status: 'processing',
+          timestamp: new Date().toISOString()
+        });
+        
+        // 🔄 Synchroniser avec Kimland ET mettre à jour Shopify
+        const syncResult = await kimlandService.syncProductInventory(sku, product.id.toString(), shop, accessToken, product.title);
+        
+        if (syncResult.syncStatus === 'success') {
+          successful++;
+          const kimlandStock = syncResult.kimlandProduct ? 
+            syncResult.kimlandProduct.variants.reduce((total, v) => total + v.stock, 0) : 0;
+          
+          // 📈 Diffuser le succès IMMÉDIATEMENT
+          broadcastToClients({
+            type: 'sync_item_result',
+            shop,
+            success: true,
+            sku,
+            productName: product.title,
+            message: `✓ ${sku} - Synchronisé avec succès`,
+            kimlandStock,
+            variantsCount: syncResult.kimlandProduct?.variants.length || 0,
+            current: processed,
+            total: productsWithSku.length,
+            percentage,
+            timestamp: new Date().toISOString()
+          });
+          
+        } else if (syncResult.syncStatus === 'not_found') {
+          failed++;
+          
+          // 📈 Diffuser l'échec IMMÉDIATEMENT
+          broadcastToClients({
+            type: 'sync_item_result',
+            shop,
+            success: false,
+            sku,
+            productName: product.title,
+            message: `× ${sku} - Produit non trouvé sur Kimland`,
+            error: 'not_found',
+            current: processed,
+            total: productsWithSku.length,
+            percentage,
+            timestamp: new Date().toISOString()
+          });
+          
+        } else {
+          failed++;
+          
+          // 📈 Diffuser l'erreur IMMÉDIATEMENT
+          broadcastToClients({
+            type: 'sync_item_result',
+            shop,
+            success: false,
+            sku,
+            productName: product.title,
+            message: `× ${sku} - ${syncResult.errorMessage || 'Erreur inconnue'}`,
+            error: syncResult.errorMessage,
+            current: processed,
+            total: productsWithSku.length,
+            percentage,
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        // ⏱️ Pause légère entre les produits
+        if (i < productsWithSku.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+      } catch (error) {
+        failed++;
+        const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+        
+        // 📈 Diffuser l'erreur système IMMÉDIATEMENT
+        broadcastToClients({
+          type: 'sync_item_result',
+          shop,
+          success: false,
+          sku,
+          productName: product.title,
+          message: `× ${sku} - Erreur système: ${errorMessage}`,
+          error: errorMessage,
+          current: processed,
+          total: productsWithSku.length,
+          percentage,
+          timestamp: new Date().toISOString()
+        });
+        
+        logger.error('Erreur sync produit individuel', { sku, error, shop });
+      }
+    }
+    
+    // 📊 Résultat final
+    const duration = Date.now() - startTime;
+    const successRate = Math.round((successful / productsWithSku.length) * 100);
+    
+    broadcastToClients({
+      type: 'sync_complete',
+      shop,
+      message: `🏁 Synchronisation terminée en ${Math.round(duration / 1000)}s`,
+      successful,
+      failed,
+      total: productsWithSku.length,
+      duration,
+      successRate,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 💾 Sauvegarder l'historique
+    await saveSyncHistory(shop, {
+      date: new Date(),
+      successful,
+      failed,
+      total: productsWithSku.length,
+      status: failed === 0 ? 'completed' : 'partial',
+      duration,
+      results: [] // Pas besoin de stocker tous les résultats
+    });
+    
+    logger.info('✅ Synchronisation temps réel terminée', {
+      shop,
+      successful,
+      failed,
+      total: productsWithSku.length,
+      duration: Math.round(duration / 1000)
+    });
+    
+  } catch (error) {
+    logger.error('❌ Erreur critique sync temps réel', { error, shop, processed });
+    
+    broadcastToClients({
+      type: 'sync_error',
+      shop,
+      message: '💥 Erreur critique lors de la synchronisation',
+      error: error instanceof Error ? error.message : 'Erreur inconnue',
+      processed,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
 router.post('/inventory/all', validateShop, requireAuth, asyncHandler(async (req: Request, res: Response) => {
   const shop = req.query.shop as string;
   let isCancelled = false;

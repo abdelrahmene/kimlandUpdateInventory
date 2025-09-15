@@ -601,17 +601,14 @@ export class KimlandProductSearcher {
    */
   private async extractProductInfo(element: Element, sku: string, searchResponse?: any, workingUrl?: string): Promise<KimlandProduct | null> {
     try {
-      // Add base URL handling
-      const baseUrl = searchResponse?.config?.url 
-        ? new URL(searchResponse.config.url).origin 
-        : 'https://kimland.dz';
-
-      logger.info('🔍 Début extraction produit', {
+      // Regrouper les logs de debug
+      const debugInfo = {
         sku,
-        baseUrl,
-        hasSearchResponse: !!searchResponse,
-        workingUrl
-      });
+        elementContent: element.textContent?.substring(0, 100),
+        currentUrl: searchResponse?.config?.url || workingUrl,  // Ajout de la virgule ici
+        timestamp: new Date().toISOString()
+      };
+      logger.debug('Début extraction produit', debugInfo);
 
       // Extraire le lien du produit
       const linkSelectors = [
@@ -938,6 +935,9 @@ export class KimlandProductSearcher {
     } catch (error) {
       logger.error('❌ Erreur extraction variants', { sku, error: error instanceof Error ? error.message : error });
       return [];
+    }
+  }
+}
     }
   }
 }

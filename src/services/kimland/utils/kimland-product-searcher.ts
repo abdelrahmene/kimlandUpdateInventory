@@ -505,6 +505,10 @@ export class KimlandProductSearcher {
   /**
    * Valider que le produit trouvé correspond vraiment au SKU recherché
    */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   private isValidProduct(productName: string, sku: string): boolean {
     const normalizedName = productName.toLowerCase().trim();
     const normalizedSku = sku.toLowerCase().trim();

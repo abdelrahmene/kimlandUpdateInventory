@@ -374,6 +374,57 @@ export class KimlandProductSearcher {
   }
 
   /**
+   * Valider que le produit trouvé n'est pas un produit générique/placeholder
+   */
+  private isValidProduct(productName: string, sku: string): boolean {
+    const normalizedName = productName.toLowerCase().trim();
+    const normalizedSku = sku.toLowerCase().trim();
+    
+    // Liste des noms de produits génériques à rejeter
+    const genericNames = [
+      'produit vip',
+      'produit - vip',
+      'vipprod',
+      'vip',
+      'tous',
+      'standard',
+      'générique',
+      'placeholder',
+      'test'
+    ];
+    
+    // Vérifier si le nom du produit est générique
+    const isGeneric = genericNames.some(generic => {
+      return normalizedName.includes(generic) || normalizedName === generic;
+    });
+    
+    if (isGeneric) {
+      logger.warn('🚫 Produit générique détecté et rejeté', { 
+        sku, 
+        foundName: productName,
+        reason: 'Nom générique détecté'
+      });
+      return false;
+    }
+    
+    // Vérifier si le nom contient le SKU ou des éléments du nom de produit attendu
+    const containsSku = normalizedName.includes(normalizedSku);
+    const hasValidLength = productName.trim().length > 5; // Noms trop courts suspects
+    
+    if (!hasValidLength) {
+      logger.warn('🚫 Produit avec nom trop court rejeté', { 
+        sku, 
+        foundName: productName,
+        reason: 'Nom trop court'
+      });
+      return false;
+    }
+    
+    logger.info('✅ Produit validé comme non-générique', { sku, foundName: productName });
+    return true;
+  }
+
+  /**
    * Extraire les informations du produit
    */
   private async extractProductInfo(element: Element, sku: string): Promise<KimlandProduct | null> {
@@ -484,9 +535,21 @@ export class KimlandProductSearcher {
       // Récupérer les variants depuis la page produit
       const variants = await this.extractProductVariants(productUrl, sku);
       
+      const productName = productNameElement.textContent?.trim() || '';
+      
+      // 🚫 VALIDATION CRITIQUE : Rejeter les produits génériques
+      if (!this.isValidProduct(productName, sku)) {
+        logger.error('❌ Produit générique détecté - recherche échouée', {
+          sku,
+          foundName: productName,
+          url: productUrl
+        });
+        return null;
+      }
+      
       const product: KimlandProduct = {
         id: productUrl.split('/').slice(-2, -1)[0] || 'unknown',
-        name: productNameElement.textContent?.trim() || '',
+        name: productName,
         url: productUrl,
         price: priceElement?.textContent?.trim() || '',
         oldPrice: oldPriceElement?.textContent?.trim(),

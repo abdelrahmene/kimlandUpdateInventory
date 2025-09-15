@@ -601,6 +601,18 @@ export class KimlandProductSearcher {
    */
   private async extractProductInfo(element: Element, sku: string, searchResponse?: any, workingUrl?: string): Promise<KimlandProduct | null> {
     try {
+      // Add base URL handling
+      const baseUrl = searchResponse?.config?.url 
+        ? new URL(searchResponse.config.url).origin 
+        : 'https://kimland.dz';
+
+      logger.info('🔍 Début extraction produit', {
+        sku,
+        baseUrl,
+        hasSearchResponse: !!searchResponse,
+        workingUrl
+      });
+
       // Extraire le lien du produit
       const linkSelectors = [
         'a[href*="product"]',
@@ -615,14 +627,6 @@ export class KimlandProductSearcher {
       for (const selector of linkSelectors) {
         productLink = element.querySelector(selector) as HTMLAnchorElement;
         if (productLink && (productLink.href || productLink.onclick)) {
-          logger.info('🔗 Lien produit trouvé', {
-            sku,
-            selector,
-            href: productLink.href || 'onclick',
-            text: productLink.textContent?.substring(0, 50),
-            currentUrl: searchResponse?.config?.url || workingUrl  // AJOUT ICI
-
-          });
           break;
         }
       }
@@ -699,9 +703,22 @@ export class KimlandProductSearcher {
       // Construire l'URL du produit
       let productUrl: string;
       try {
-        productUrl = new URL(productLink.href, 'https://kimland.dz').href;
+        if (productLink?.href) {
+          productUrl = new URL(productLink.href, baseUrl).href;
+        } else if (workingUrl) {
+          productUrl = new URL(workingUrl, baseUrl).href;
+        } else {
+          throw new Error('Impossible de construire l\'URL du produit');
+        }
       } catch (error) {
-        productUrl = productLink.href.startsWith('http') ? productLink.href : `https://kimland.dz${productLink.href}`;
+        logger.error('❌ Erreur construction URL produit', {
+          sku,
+          linkHref: productLink?.href,
+          workingUrl,
+          baseUrl,
+          error: error instanceof Error ? error.message : error
+        });
+        throw error;
       }
       
       logger.info('🌐 URL produit construite', { sku, productUrl });
@@ -745,7 +762,11 @@ export class KimlandProductSearcher {
       return product;
 
     } catch (error) {
-      logger.error('❌ Erreur extraction infos produit', { sku, error: error instanceof Error ? error.message : error });
+      logger.error('❌ Erreur extraction infos produit', { 
+        sku, 
+        error: error instanceof Error ? error.message : error,
+        elementHTML: element.innerHTML.substring(0, 200)
+      });
       return null;
     }
   }

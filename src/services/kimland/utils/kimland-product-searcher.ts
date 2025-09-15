@@ -503,7 +503,7 @@ export class KimlandProductSearcher {
   }
 
   /**
-   * Valider que le produit trouvé n'est pas un produit générique/placeholder
+   * Valider que le produit trouvé correspond vraiment au SKU recherché
    */
   private isValidProduct(productName: string, sku: string): boolean {
     const normalizedName = productName.toLowerCase().trim();
@@ -547,14 +547,55 @@ export class KimlandProductSearcher {
       return false;
     }
     
-    logger.info('✅ Produit validé comme non-générique', { sku, foundName: productName });
+    // 🎯 NOUVELLE VALIDATION : Vérifier la correspondance avec le SKU
+    const skuParts = normalizedSku.split(/[-_\s]+/).filter(part => part.length > 1);
+    const nameParts = normalizedName.split(/[-_\s]+/).filter(part => part.length > 1);
+    
+    // Chercher des correspondances entre les parties du SKU et le nom du produit
+    const skuMatches = skuParts.some(skuPart => {
+      return nameParts.some(namePart => {
+        // Match exact
+        if (namePart === skuPart) return true;
+        // Match partiel pour les codes longs
+        if (skuPart.length >= 4 && namePart.includes(skuPart)) return true;
+        if (namePart.length >= 4 && skuPart.includes(namePart)) return true;
+        return false;
+      });
+    });
+    
+    // Vérifier si le nom contient le SKU complet ou des parties significatives
+    const containsFullSku = normalizedName.includes(normalizedSku);
+    const containsSignificantPart = skuMatches;
+    
+    // Pour des SKUs comme "CD6109-200", chercher "CD6109" ou "200" dans le nom
+    // "CORE SLIDE HI-TEC" ne contient ni "cd6109" ni "200" donc sera rejeté
+    if (!containsFullSku && !containsSignificantPart) {
+      logger.warn('🚫 Produit ne correspond pas au SKU recherché', { 
+        sku, 
+        foundName: productName,
+        reason: 'Aucun élément du SKU trouvé dans le nom du produit',
+        skuParts,
+        nameParts,
+        checkedMatches: {
+          fullSku: containsFullSku,
+          significantPart: containsSignificantPart
+        }
+      });
+      return false;
+    }
+    
+    logger.info('✅ Produit validé comme correspondant au SKU', { 
+      sku, 
+      foundName: productName,
+      matchType: containsFullSku ? 'SKU complet' : 'Partie du SKU'
+    });
     return true;
   }
 
   /**
    * Extraire les informations du produit
    */
-  private async extractProductInfo(element: Element, sku: string): Promise<KimlandProduct | null> {
+  private async extractProductInfo(element: Element, sku: string, searchResponse?: any, workingUrl?: string): Promise<KimlandProduct | null> {
     try {
       // Extraire le lien du produit
       const linkSelectors = [
@@ -574,7 +615,9 @@ export class KimlandProductSearcher {
             sku,
             selector,
             href: productLink.href || 'onclick',
-            text: productLink.textContent?.substring(0, 50)
+            text: productLink.textContent?.substring(0, 50),
+            currentUrl: searchResponse?.config?.url || workingUrl  // AJOUT ICI
+
           });
           break;
         }

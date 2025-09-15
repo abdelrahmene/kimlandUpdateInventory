@@ -601,6 +601,11 @@ export class KimlandProductSearcher {
    */
   private async extractProductInfo(element: Element, sku: string, searchResponse?: any, workingUrl?: string): Promise<KimlandProduct | null> {
     try {
+      // Add base URL handling
+      const baseUrl = searchResponse?.config?.url 
+        ? new URL(searchResponse.config.url).origin 
+        : 'https://kimland.dz';
+
       // Regrouper les logs de debug
       const debugInfo = {
         sku,
@@ -935,9 +940,6 @@ export class KimlandProductSearcher {
     } catch (error) {
       logger.error('❌ Erreur extraction variants', { sku, error: error instanceof Error ? error.message : error });
       return [];
-    }
-  }
-}
     }
   }
 }

@@ -23,10 +23,11 @@ export class KimlandProductSearcher {
       
       let searchResponse;
       let workingUrl;
+      let attemptCount = 0;
       
-      // Tenter chaque URL de recherche
+      // Tenter chaque URL de recherche avec retry automatique pour les produits VIP
       for (const searchUrl of searchUrls) {
-        logger.info('📡 Tentative URL de recherche Kimland', { searchUrl, sku });
+        logger.info('📡 Tentative URL de recherche Kimland', { searchUrl, sku, attempt: attemptCount + 1 });
         
         try {
           const response = await this.authenticator.httpClient.get(searchUrl, {
@@ -54,14 +55,16 @@ export class KimlandProductSearcher {
               workingUrl, 
               sku,
               pageScore,
-              contentLength: response.data.length
+              contentLength: response.data.length,
+              attempt: attemptCount + 1
             });
             break;
           }
         } catch (error) {
-          logger.warn('❌ URL échouée', { searchUrl, error: error instanceof Error ? error.message : error });
+          logger.warn('❌ URL échouée', { searchUrl, error: error instanceof Error ? error.message : error, attempt: attemptCount + 1 });
           continue;
         }
+        attemptCount++;
       }
       
       // Fallback vers les pages générales si aucune recherche spécifique ne fonctionne
@@ -127,8 +130,21 @@ export class KimlandProductSearcher {
         innerHTML: bestProductElement.innerHTML.substring(0, 200)
       });
 
-      // Extraire les informations du produit
-      return await this.extractProductInfo(bestProductElement, sku);
+      // Extraire les informations du produit avec retry si produit VIP
+      const extractedProduct = await this.extractProductInfo(bestProductElement, sku);
+      
+      // Si on obtient un produit VIP, essayer une recherche alternative
+      if (!extractedProduct && attemptCount < 3) {
+        logger.warn('🔄 Produit VIP détecté, tentative de recherche alternative', { sku, attempt: attemptCount + 1 });
+        
+        // Attendre un peu avant de réessayer
+        await this.delay(2000);
+        
+        // Essayer avec d'autres URLs de recherche
+        return this.tryAlternativeSearch(sku, productName);
+      }
+      
+      return extractedProduct;
 
     } catch (error) {
       logger.error('❌ Erreur recherche produit', { sku, error: error instanceof Error ? error.message : error });
@@ -294,7 +310,7 @@ export class KimlandProductSearcher {
   }
 
   /**
-   * Trouver le meilleur élément produit
+   * Trouver le meilleur élément produit avec filtrage des produits VIP
    */
   private findBestProductElement(searchDoc: Document, sku: string, productName?: string): Element | null {
     const productSelectors = HtmlAnalyzer.getProductSelectors();
@@ -316,9 +332,25 @@ export class KimlandProductSearcher {
               continue;
             }
             
+            // Vérification préliminaire pour exclure les produits VIP
+            const elementText = element.textContent?.toLowerCase() || '';
+            const hasVipInText = elementText.includes('produit vip') || 
+                               elementText.includes('produit - vip') ||
+                               element.innerHTML.toLowerCase().includes('vipprod');
+            
+            if (hasVipInText) {
+              logger.warn('⚠️ Élément VIP ignoré lors du scoring', {
+                sku,
+                selector,
+                elementClass: element.className,
+                vipText: elementText.substring(0, 100)
+              });
+              continue; // Ignorer complètement cet élément
+            }
+            
             const score = HtmlAnalyzer.calculateProductScore(element, sku, productName);
             
-            if (score.total >= 3) { // Seuil minimum augmenté
+            if (score.total >= 3) {
               candidateProducts.push({
                 element,
                 selector,
@@ -326,7 +358,7 @@ export class KimlandProductSearcher {
                 scoreDetails: score
               });
               
-              logger.info(`🏅 Candidat trouvé`, {
+              logger.info(`🏅 Candidat trouvé (non-VIP)`, {
                 sku,
                 selector,
                 score: score.total,
@@ -340,6 +372,54 @@ export class KimlandProductSearcher {
       } catch (error) {
         logger.warn('⚠️ Erreur avec sélecteur', { selector, error: error instanceof Error ? error.message : error });
         continue;
+      }
+    }
+    
+    // Si aucun candidat non-VIP trouvé, essayer avec tous les éléments mais en privilégiant les non-VIP
+    if (candidateProducts.length === 0) {
+      logger.warn('⚠️ Aucun candidat non-VIP trouvé, recherche élargie', { sku });
+      
+      for (const selector of productSelectors) {
+        try {
+          const elements = searchDoc.querySelectorAll(selector);
+          
+          if (elements.length > 0) {
+            for (const element of Array.from(elements)) {
+              if (HtmlAnalyzer.isFilterElement(element)) {
+                continue;
+              }
+              
+              const score = HtmlAnalyzer.calculateProductScore(element, sku, productName);
+              
+              if (score.total >= 3) {
+                // Pénaliser fortement les éléments VIP mais les garder comme dernier recours
+                const elementText = element.textContent?.toLowerCase() || '';
+                const hasVipInText = elementText.includes('produit vip') || 
+                                   elementText.includes('produit - vip');
+                
+                const finalScore = hasVipInText ? Math.max(1, score.total - 10) : score.total;
+                
+                candidateProducts.push({
+                  element,
+                  selector,
+                  score: finalScore,
+                  scoreDetails: score
+                });
+                
+                logger.info(`🏅 Candidat trouvé (avec pénalité VIP)`, {
+                  sku,
+                  selector,
+                  originalScore: score.total,
+                  finalScore,
+                  isVip: hasVipInText,
+                  elementClass: element.className
+                });
+              }
+            }
+          }
+        } catch (error) {
+          continue;
+        }
       }
     }
     
@@ -374,6 +454,55 @@ export class KimlandProductSearcher {
   }
 
   /**
+   * Recherche alternative quand le produit principal retourne un VIP
+   */
+  private async tryAlternativeSearch(sku: string, productName?: string): Promise<KimlandProduct | null> {
+    logger.info('🔍 Recherche alternative pour éviter le produit VIP', { sku });
+    
+    // URLs alternatives avec des paramètres différents
+    const alternativeUrls = [
+      `/index.php?page=products&search=${encodeURIComponent(sku)}`,
+      `/index.php?keyword=${encodeURIComponent(sku)}`,
+      `/catalogue.php?q=${encodeURIComponent(sku)}`,
+      // Essayer avec des parties du SKU
+      `/index.php?page=products&keyword=${encodeURIComponent(sku.split('-')[0])}`,
+    ];
+    
+    for (const altUrl of alternativeUrls) {
+      try {
+        logger.info('🔄 Tentative URL alternative', { altUrl, sku });
+        
+        const response = await this.authenticator.httpClient.get(altUrl, {
+          headers: {
+            'Cookie': `PHPSESSID=${this.authenticator.sessionId}`,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        
+        if (response.data.length > 10000) { // Page avec du contenu
+          const altDom = new JSDOM(response.data);
+          const altDoc = altDom.window.document;
+          
+          const altElement = this.findBestProductElement(altDoc, sku, productName);
+          if (altElement) {
+            const altProduct = await this.extractProductInfo(altElement, sku);
+            if (altProduct && this.isValidProduct(altProduct.name, sku)) {
+              logger.info('✅ Produit trouvé via recherche alternative', { sku, productName: altProduct.name });
+              return altProduct;
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn('⚠️ URL alternative échouée', { altUrl, error: error instanceof Error ? error.message : error });
+        continue;
+      }
+    }
+    
+    logger.warn('❌ Aucune alternative trouvée', { sku });
+    return null;
+  }
+
+  /**
    * Valider que le produit trouvé n'est pas un produit générique/placeholder
    */
   private isValidProduct(productName: string, sku: string): boolean {
@@ -383,9 +512,8 @@ export class KimlandProductSearcher {
     // Liste des noms de produits génériques à rejeter
     const genericNames = [
       'produit vip',
-      'produit - vip',
+      'produit - vip', 
       'vipprod',
-      'vip',
       'tous',
       'standard',
       'générique',
@@ -399,7 +527,7 @@ export class KimlandProductSearcher {
     });
     
     if (isGeneric) {
-      logger.warn('🚫 Produit générique détecté et rejeté', { 
+      logger.warn('🚫 Produit générique détecté', { 
         sku, 
         foundName: productName,
         reason: 'Nom générique détecté'
@@ -407,9 +535,8 @@ export class KimlandProductSearcher {
       return false;
     }
     
-    // Vérifier si le nom contient le SKU ou des éléments du nom de produit attendu
-    const containsSku = normalizedName.includes(normalizedSku);
-    const hasValidLength = productName.trim().length > 5; // Noms trop courts suspects
+    // Validation moins stricte - accepter les noms courts mais pas vides
+    const hasValidLength = productName.trim().length > 2;
     
     if (!hasValidLength) {
       logger.warn('🚫 Produit avec nom trop court rejeté', { 
@@ -537,14 +664,14 @@ export class KimlandProductSearcher {
       
       const productName = productNameElement.textContent?.trim() || '';
       
-      // 🚫 VALIDATION CRITIQUE : Rejeter les produits génériques
+      // 🚫 VALIDATION : Rejeter les produits génériques mais permettre retry
       if (!this.isValidProduct(productName, sku)) {
-        logger.error('❌ Produit générique détecté - recherche échouée', {
+        logger.warn('❌ Produit générique détecté - sera retenté', {
           sku,
           foundName: productName,
           url: productUrl
         });
-        return null;
+        return null; // Retourner null pour déclencher le retry
       }
       
       const product: KimlandProduct = {

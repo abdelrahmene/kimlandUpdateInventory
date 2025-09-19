@@ -12,9 +12,9 @@ export class KimlandAuthService {
     this.authenticator = new KimlandAuthenticator();
     this.productSearcher = new KimlandProductSearcher(this.authenticator);
     this.credentials = {
-      email: 'bousetta88@gmail.com',
-      username: 'Boumediene Bousetta',
-      password: 'Abraj@Injaz'
+      email: 'Benmerdjabn@gmail.com',
+      username: 'Adel Benmerdja ',
+      password: 'adelbn17686421'
     };
   }
 

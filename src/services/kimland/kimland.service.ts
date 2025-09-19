@@ -27,9 +27,9 @@ export class KimlandService {
   constructor() {
     this.authService = new KimlandAuthService();
     this.credentials = {
-      email: 'bousetta88@gmail.com',
-      username: 'Boumediene Bousetta',
-      password: 'Abraj@Injaz'
+      email: 'Benmerdjabn@gmail.com',
+      username: 'Adel Benmerdja ',
+      password: 'adelbn17686421'
     };
   }
 

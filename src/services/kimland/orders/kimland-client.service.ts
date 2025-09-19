@@ -122,9 +122,9 @@ export class KimlandClientService {
       // S'assurer d'être connecté
       if (!this.authService.isLoggedIn()) {
         const authResult = await this.authService.authenticate({
-          email: 'bousetta88@gmail.com',
-          username: 'Boumediene Bousetta',
-          password: 'Abraj@Injaz'
+          email: 'Benmerdjabn@gmail.com',
+          username: 'Adel Benmerdja ',
+          password: 'adelbn17686421'
         });
         
         if (!authResult) {

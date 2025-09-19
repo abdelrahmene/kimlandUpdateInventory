@@ -113,9 +113,9 @@ export class ShopifyKimlandOrderSync {
     // S'assurer d'être authentifié une seule fois
     if (!this.authService.isLoggedIn()) {
       const authResult = await this.authService.authenticate({
-        email: 'bousetta88@gmail.com',
-        username: 'Boumediene Bousetta',
-        password: 'Abraj@Injaz'
+        email: 'Benmerdjabn@gmail.com',
+        username: 'Adel Benmerdja ',
+        password: 'adelbn17686421'
       });
 
       if (!authResult) {
@@ -221,9 +221,9 @@ export class ShopifyKimlandOrderSync {
       if (!isConnected) {
         // Tenter une reconnexion
         const authResult = await this.authService.authenticate({
-          email: 'bousetta88@gmail.com',
-          username: 'Boumediene Bousetta',
-          password: 'Abraj@Injaz'
+          email: 'Benmerdjabn@gmail.com',
+          username: 'Adel Benmerdja ',
+          password: 'adelbn17686421'
         });
 
         return {
